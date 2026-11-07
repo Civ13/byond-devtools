@@ -35,7 +35,8 @@
       region = m.region;
       if (m.error) { $('status').textContent = m.error; $('image').removeAttribute('src'); return; }
       iconSize = m.iconSize; show(m.png);
-      $('status').textContent = `(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} - ${m.truthLayer}, not a client screenshot`;
+      $('status').textContent = m.drawn === 0 ? 'Nothing in this view could be drawn: no icon resolved (see Report).'
+        : `(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} - ${m.drawn} sprites, ${m.truthLayer}, not a client screenshot`;
       $('report').textContent = (m.diagnostics.length ? m.diagnostics.map(d => `${d.code} ${d.detail} x${d.count}`).join('\n') : 'Everything drawn exactly.');
     } else if (m.type === 'cell') {
       const c = m.cell;

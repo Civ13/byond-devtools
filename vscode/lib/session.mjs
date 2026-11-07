@@ -47,7 +47,7 @@ export async function openSession({ text, root, mapRelative, dme, treeFile, byon
       if (!r) return { error: rendererError, region: { x1, y1, x2, y2, z } };
       const { renderMap } = await load(core, 'render-project.js');
       const out = await renderMap(r, { root, mapText: text, x1, y1, x2, y2, z });
-      return { png: Buffer.from(out.png).toString('base64'), region: { x1, y1, x2, y2, z }, iconSize: r.iconSize, width: out.result.width, height: out.result.height, diagnostics: out.result.diagnostics, truthLayer: out.result.truthLayer, mapPath: mapRelative };
+      return { png: Buffer.from(out.png).toString('base64'), region: { x1, y1, x2, y2, z }, iconSize: r.iconSize, width: out.result.width, height: out.result.height, drawn: out.result.drawn, diagnostics: out.result.diagnostics, truthLayer: out.result.truthLayer, mapPath: mapRelative };
     },
   };
 }

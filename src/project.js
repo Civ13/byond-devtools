@@ -77,14 +77,19 @@ export async function loadProjectTypes({ root, dme, binDir, treeFile, timeoutMs 
       xml = at >= 0 ? r.stdout.slice(at) : r.stdout;
       const messages = `${at > 0 ? r.stdout.slice(0, at) : ''}${r.stderr || ''}`;
       // DreamMaker -o prints the tree even when compilation fails, so errors must be surfaced.
-      compiler = { status: r.status, errors: messages.split(/\r?\n/).filter(l => /:error:/.test(l)).map(l => l.split(prefixOf(projectRoot)).join('')).slice(0, 50),
+      compiler = { status: r.status, errors: messages.split(/\r?\n/).filter(l => /:error:/.test(l)).map(l => l.replaceAll('\\', '/').split(prefixOf(projectRoot)).join('')).slice(0, 50),
         errorCount: (messages.match(/:error:/g) || []).length };
       if (!xml.includes('<dm>')) throw new Error(`DreamMaker -o produced no object tree (exit ${r.status}): ${messages.slice(-500)}`);
     } finally { await rm(dir, { recursive: true, force: true }); }
   }
   // Make file attributes project-relative so diagnostics match the checkout.
-  const prefix = projectRoot.split(path.sep).join('/') + '/';
-  xml = xml.split(`file="${prefix}`).join('file="');
+  // dm.exe on Windows prints absolute backslash paths whose drive-letter case follows the
+  // #include, not realpath, so normalise slashes (and case on Windows) before stripping.
+  const prefix = prefixOf(projectRoot), fold = process.platform === 'win32' ? s => s.toLowerCase() : s => s;
+  xml = xml.replace(/file="([^"]*)"/g, (_, f) => {
+    const p = f.replaceAll('\\', '/');
+    return `file="${fold(p).startsWith(fold(prefix)) ? p.slice(prefix.length) : p}"`;
+  });
   const includes = inspectDme(dmeFile.text).includes.filter(i => /\.dm$/i.test(i.path));
   const texts = [dmeFile.text];
   for (const inc of includes) {

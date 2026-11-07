@@ -84,3 +84,16 @@ test('vars DreamMaker leaves unclosed after a failed value are closed implicitly
   const t = parseTypeTree('<dm><obj file="a.dm:1">obj<obj file="a.dm:1">x<var file="a.dm:2">snd<var file="a.dm:3">n<val file="a.dm:3">2</val></var></obj></obj></dm>');
   assert.equal(t.recoveredTags, 1); assert.equal(t.lookupVar('/obj/x', 'n').printed, '2'); assert.ok(t.lookupVar('/obj/x', 'snd'));
 });
+test('absolute backslash file paths (dm.exe on Windows) become project-relative', async () => {
+  const { realpath, mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const os = await import('node:os'), path = await import('node:path');
+  const abs = (await realpath(ROOT)).split(path.sep).join('/');
+  const xml = (await readFile('fixtures/types/tree.xml', 'utf8')).replaceAll('file="', `file="${abs}/`).replace(/file="([^"]*)"/g, (_, f) => `file="${f.replaceAll('/', '\\')}"`);
+  assert.match(xml, /file="[^"]*\\code\\types\.dm:1"/);
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bd-tree-'));
+  try {
+    await writeFile(path.join(dir, 'tree.xml'), xml);
+    const windows = await loadProjectTypes({ root: ROOT, dme: 'test.dme', treeFile: path.join(dir, 'tree.xml') });
+    assert.equal(windows.xml, project.xml);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
