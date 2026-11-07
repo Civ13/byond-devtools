@@ -1,0 +1,6 @@
+"aa" = (/obj/item{name = "A, {quoted} example"},/obj/item,/turf/floor,/area/example)
+"ab" = (/turf/wall,/area/example)
+(1,1,1) = {"
+aaab
+abaa
+"}
