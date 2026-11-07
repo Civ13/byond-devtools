@@ -122,9 +122,20 @@ export function parseDmm(source, options = {}) {
   }
   if (!dictionary.size || !blocks.length) fail('Map must contain dictionary and grid blocks');
   const freeze = Object.freeze;
+  // Lazy z -> x -> covering blocks index. Total entries equal summed block widths (<= cellCount).
+  let columns = null;
+  function columnIndex() {
+    if (columns) return columns;
+    columns = new Map();
+    for (const b of blocks) {
+      let level = columns.get(b.z); if (!level) columns.set(b.z, level = new Map());
+      for (let x = b.x; x <= b.maxX; x++) { const list = level.get(x); if (list) list.push(b); else level.set(x, [b]); }
+    }
+    return columns;
+  }
   function inspectCell(x, y, z) {
     if (![x,y,z].every(v => Number.isSafeInteger(v) && v > 0)) throw new TypeError('Coordinates must be positive safe integers');
-    const b = blocks.find(b => b.z === z && x >= b.x && x <= b.maxX && y >= b.y && y <= b.maxY);
+    const b = (columnIndex().get(z)?.get(x) || []).find(b => y >= b.y && y <= b.maxY);
     if (!b) return null;
     const index = (x - b.x) * keyWidth, key = b.rows[b.maxY - y].slice(index, index + keyWidth);
     return freeze({ x, y, z, key, atoms: dictionary.get(key).atoms });

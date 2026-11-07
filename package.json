@@ -4,7 +4,15 @@
   "private": true,
   "description": "Read-only BYOND map inspection foundation for humans and agents",
   "type": "module",
-  "engines": { "node": ">=22" },
-  "bin": { "byond-map": "src/cli.js" },
-  "scripts": { "test": "node --test", "check": "node --check src/dmm.js && node --check src/project.js && node --check src/cli.js && node --check src/json.js" }
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "byond-map": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check.js",
+    "corpus": "node scripts/corpus.js"
+  }
 }
