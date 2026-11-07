@@ -92,14 +92,16 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends unzip make libc6-i386 libstdc++6:i386 libgcc-s1:i386 lib32z1
+          pkgs="unzip make libc6-i386 libstdc++6:i386 libgcc-s1:i386 lib32z1"
+          sudo apt-get install -y -qq --no-install-recommends $pkgs libcurl4:i386 \
+            || sudo apt-get install -y -qq --no-install-recommends $pkgs libcurl4t64:i386
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/byond.zip" "$BYOND_URL"
           echo "$BYOND_SHA256  $RUNNER_TEMP/byond.zip" | sha256sum -c -
           unzip -q "$RUNNER_TEMP/byond.zip" -d "$RUNNER_TEMP"
           (cd "$RUNNER_TEMP/byond" && make here >/dev/null)
           echo "BYOND_BIN=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1
+          LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
       - name: Live fixture agreement
         run: node --test test/native.test.js
       - name: Re-record fixtures and diff against the checked-in recordings
