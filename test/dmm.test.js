@@ -9,10 +9,13 @@ test('ordered duplicate atoms and opaque overrides are preserved',()=>{
  assert.equal(m.source,d+grid); assert.equal(m.inspectCell(2,2,1).key,'b');
  assert.equal(m.inspectCell(1,1,1).key,'b'); assert.equal(m.inspectCell(3,1,1),null);
 });
-test('per-block coordinates support offset blocks and z planes',()=>{
+test('offset block headers count down from the map top (native BYOND placement)',()=>{
+ // Map top = max(20+2-1, 3) = 21. Header y=20 puts the first row at 21-19 = 2; header y=3 at 19.
  const m=parseDmm(d+'(10,20,2)={"\nab\nba\n"}\n(2,3,1)={"\na\n"}');
- assert.equal(m.inspectCell(10,21,2).key,'a'); assert.equal(m.inspectCell(10,20,2).key,'b');
- assert.equal(m.inspectCell(2,3,1).key,'a'); assert.deepEqual(m.summary().levels,[1,2]);
+ assert.equal(m.inspectCell(10,2,2).key,'a'); assert.equal(m.inspectCell(10,1,2).key,'b');
+ assert.equal(m.inspectCell(2,19,1).key,'a'); assert.equal(m.inspectCell(2,3,1),null);
+ assert.deepEqual(m.blocks[0].header,{x:10,y:20,z:2}); assert.deepEqual(m.summary().levels,[1,2]);
+ assert.equal(m.summary().bounds.maxY,19); assert.equal(m.world.maxY,21); assert.equal(m.summary().coordinateModel,'byond-native-top-down');
 });
 test('TGM single-column blocks preserve axes',()=>{
  const m=parseDmm(d+'(1,1,1)={"\na\nb\n"}\n(2,1,1)={"\nb\na\n"}');

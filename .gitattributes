@@ -1,3 +1,4 @@
 * text=auto eol=lf
 *.dmi binary
 *.png binary
+fixtures/native/crlf_*.dmm -text

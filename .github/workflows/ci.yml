@@ -24,8 +24,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         node: ['22', '24']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
       - run: node --version
@@ -41,15 +41,15 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           repository: Civ13/Civ13
           path: civ13
           sparse-checkout: maps
           sparse-checkout-cone-mode: true
           fetch-depth: 1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: Parse every Civ13 map
@@ -64,4 +64,60 @@ jobs:
         with:
           name: corpus-report-${{ matrix.os }}
           path: corpus-report.json
+          retention-days: 7
+
+  native:
+    name: native BYOND agreement (516.1688, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BYOND_VERSION: '516.1688'
+      BYOND_URL: https://github.com/Civ13/Civ13/releases/download/byond-toolchain-cache-516.1688-linux-16278f318cde/516.1688_byond_linux.zip
+      BYOND_SHA256: 16278f318cdeb4b77c57868dd7135032fde717ea6226269d22b2a1a50968e7f9
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: Civ13/Civ13
+          path: civ13
+          sparse-checkout: |
+            maps
+            icons
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install pinned BYOND (sha256-checked)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          pkgs="unzip make libc6-i386 libstdc++6:i386 libgcc-s1:i386 lib32z1"
+          sudo apt-get install -y -qq --no-install-recommends $pkgs libcurl4:i386 \
+            || sudo apt-get install -y -qq --no-install-recommends $pkgs libcurl4t64:i386
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/byond.zip" "$BYOND_URL"
+          echo "$BYOND_SHA256  $RUNNER_TEMP/byond.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/byond.zip" -d "$RUNNER_TEMP"
+          (cd "$RUNNER_TEMP/byond" && make here >/dev/null)
+          echo "BYOND_BIN=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
+          LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
+      - name: Live fixture agreement
+        run: node --test test/native.test.js
+      - name: Re-record fixtures and diff against the checked-in recordings
+        run: |
+          node scripts/native.js check --byond "$BYOND_BIN" --record fixtures/native fixtures/native/*.dmm > native-fixtures.json
+          git diff --exit-code -- fixtures/native
+      - name: Civ13 map sample (stub types, first 40 compilable maps)
+        shell: bash
+        run: |
+          status=0
+          node scripts/native.js corpus --byond "$BYOND_BIN" --root civ13 --max-cells 120000 --limit 40 > native-corpus.json || status=$?
+          node -e "const r=require('./native-corpus.json');console.log(r.agreed+'/'+r.compared+' maps agree, '+r.cells+' cells, '+r.overrides+' overrides, statuses '+JSON.stringify(r.statuses));for(const m of r.results.filter(m=>m.status==='ok'&&!m.agree))console.log('::error file='+m.map+'::'+JSON.stringify(m.differences[0]))"
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-reports
+          path: native-*.json
           retention-days: 7

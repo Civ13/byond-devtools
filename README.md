@@ -44,15 +44,15 @@ exit status 1. The CLI never writes maps.
 
 ## What this does NOT prove
 
-Passing the parser is not BYOND compilation or playability validation. Overrides
+Passing the parser is not full-game compilation or playability validation. Overrides
 remain raw DM expressions, never evaluated. No inheritance, active conditional
 includes, DMI sprite rendering, lighting, smoothing, pathfinding, runtime state or
 persistent saves are resolved. The `--dme` option binds the file hash but does not
 resolve its type environment. Unknown paths are retained, not silently removed.
 
-Sparse/offset blocks are supported as authored fragments; world completeness is
-not asserted. Rows are north-first within each block, with `(x,y,z)` its southwest
-origin. Source spans use JavaScript UTF-16 code-unit offsets, **not byte offsets**.
+Sparse/offset blocks are placed the way BYOND 516 places them (header y counts down
+from the map top, see [architecture](docs/architecture.md)); missing cells are holes
+that BYOND fills with `/turf` in `/area`. Source spans use JavaScript UTF-16 code-unit offsets, **not byte offsets**.
 Files must be valid UTF-8. CLI hashes describe exact disk bytes; parser `source`
 is decoded text. Neither is a native binary `.sav` representation.
 
@@ -75,11 +75,25 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
 
+## Native BYOND agreement
+
+`scripts/native.js` compiles a map against generated stub types with a separately
+installed DreamMaker, boots it headless in DreamDaemon (`-safe`), and compares every cell
+(turf, area, underlay count, contents order and literal override values) with the
+parser. Recorded rules: the last turf wins and earlier turfs become underlays, objs enter
+contents before mobs, six-digit hex colors are stored lower case and white becomes null,
+and a tile with two areas fails to compile (reported as a `multiple-areas` diagnostic).
+
+```sh
+node scripts/native.js check --byond /path/to/byond/bin fixtures/native/*.dmm
+node scripts/native.js corpus --byond /path/to/byond/bin --root /path/to/Civ13
+```
+
+This is map-load agreement only. It runs no game code, so it does not prove that a
+map works with Civ13's real types.
+
 ## Licensing and third-party material
 
-The implementation and fixtures here are original. No SpacemanDMM, StrongDMM,
-FastDMM2, mapmerge2 source, Civ13 map, or BYOND binary is bundled. No public license
-is selected yet; all rights are reserved pending the project's licensing decision.
-This is not a declaration that upstream dependencies can be used without their
-licenses. In particular, mapmerge2 identifies AGPL-3.0 origins and other likely
-components use GPL-family licenses. Review licensing before incorporating them.
+Licensed under AGPL-3.0 (see LICENSE), matching Civ13. The implementation and fixtures
+are original. No SpacemanDMM, StrongDMM, FastDMM2, mapmerge2 source, Civ13 map, or BYOND
+binary is bundled; CI downloads the pinned BYOND build separately and checks its sha256.

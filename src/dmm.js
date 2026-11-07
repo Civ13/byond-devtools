@@ -19,7 +19,7 @@ export function parseDmm(source, options = {}) {
   }
   if (new TextEncoder().encode(source).length > limits.maxBytes) throw new RangeError('DMM byte limit exceeded');
   let pos = 0, keyWidth = 0, cellCount = 0;
-  const dictionary = new Map(), blocks = [];
+  const dictionary = new Map(), blocks = [], pending = [];
   const fail = (message, at = pos) => { throw new DmmError(message, source, at); };
   function skip() {
     while (pos < source.length) {
@@ -100,7 +100,7 @@ export function parseDmm(source, options = {}) {
       const atoms = pieces.map(atom);
       dictionary.set(key, Object.freeze({ key, atoms: Object.freeze(atoms), span: Object.freeze({ start, end: pos }) }));
     } else if (source[pos] === '(') {
-      if (blocks.length >= limits.maxBlocks) fail('Block limit exceeded', start);
+      if (pending.length >= limits.maxBlocks) fail('Block limit exceeded', start);
       expect('('); const x = positive(); expect(','); const y = positive(); expect(','); const z = positive(); expect(')'); expect('='); expect('{'); expect('"');
       const bodyStart = pos; const end = source.indexOf('"', pos); if (end < 0) fail('Unterminated grid');
       let body = source.slice(bodyStart, end).replaceAll('\r\n', '\n'); pos = end + 1; expect('}');
@@ -112,15 +112,33 @@ export function parseDmm(source, options = {}) {
       if (!keyWidth) fail('Dictionary must precede grid blocks', start);
       const width = rows[0].length / keyWidth, height = rows.length;
       if (!Number.isInteger(width) || width < 1 || rows.some(r => r.length !== width * keyWidth || !/^[A-Za-z]+$/.test(r))) fail('Invalid grid row or key width', start);
-      const maxX = x + (width - 1), maxY = y + (height - 1);
-      if (!Number.isSafeInteger(maxX) || !Number.isSafeInteger(maxY)) fail('Coordinate overflow', start);
+      const maxX = x + (width - 1), top = y + (height - 1);
+      if (!Number.isSafeInteger(maxX) || !Number.isSafeInteger(top)) fail('Coordinate overflow', start);
       cellCount += width * height; if (!Number.isSafeInteger(cellCount) || cellCount > limits.maxCells) fail('Cell limit exceeded', start);
-      for (const b of blocks) if (b.z === z && x <= b.maxX && maxX >= b.x && y <= b.maxY && maxY >= b.y) fail('Overlapping grid blocks', start);
       for (const row of rows) for (let i = 0; i < row.length; i += keyWidth) if (!dictionary.has(row.slice(i, i + keyWidth))) fail(`Undefined grid key ${row.slice(i, i + keyWidth)}`, start);
-      blocks.push(Object.freeze({ x, y, z, maxX, maxY, width, height, rows: Object.freeze(rows), span: Object.freeze({ start, end: pos }) }));
+      pending.push({ x, headerY: y, z, maxX, top, width, height, rows: Object.freeze(rows), span: Object.freeze({ start, end: pos }) });
     } else fail('Unexpected top-level content');
   }
-  if (!dictionary.size || !blocks.length) fail('Map must contain dictionary and grid blocks');
+  if (!dictionary.size || !pending.length) fail('Map must contain dictionary and grid blocks');
+  // Native placement, verified against DreamDaemon 516.1688 (fixtures/native): a block header's
+  // y counts down from the map's top row. The map's height is the largest header y + height - 1
+  // over every block on every z level, and a block's first row lands at height - (y - 1).
+  // For ordinary maps (every block starts at y=1 with full height) this equals bottom-up placement.
+  const mapTop = Math.max(...pending.map(b => b.top));
+  for (const p of pending) {
+    const maxY = mapTop - (p.headerY - 1), minY = maxY - p.height + 1;
+    for (const b of blocks) if (b.z === p.z && p.x <= b.maxX && p.maxX >= b.x && minY <= b.maxY && maxY >= b.y) fail('Overlapping grid blocks', p.span.start);
+    blocks.push(Object.freeze({ x: p.x, y: minY, z: p.z, maxX: p.maxX, maxY, width: p.width, height: p.height,
+      header: Object.freeze({ x: p.x, y: p.headerY, z: p.z }), rows: p.rows, span: p.span }));
+  }
+  // Conditions DreamMaker refuses to compile are reported, not repaired.
+  const diagnostics = [];
+  for (const tile of dictionary.values()) {
+    const areas = tile.atoms.filter(a => a.path === '/area' || a.path.startsWith('/area/')).length;
+    if (areas > 1) diagnostics.push(Object.freeze({ code: 'multiple-areas', severity: 'error', key: tile.key, span: tile.span,
+      message: 'DreamMaker rejects a tile with more than one area ("multiple areas")' }));
+  }
+  Object.freeze(diagnostics);
   const freeze = Object.freeze;
   // Lazy z -> x -> covering blocks index. Total entries equal summed block widths (<= cellCount).
   let columns = null;
@@ -154,6 +172,7 @@ export function parseDmm(source, options = {}) {
       bounds: { minX: Math.min(...blocks.map(b=>b.x)), minY: Math.min(...blocks.map(b=>b.y)), minZ: Math.min(...blocks.map(b=>b.z)),
         maxX: Math.max(...blocks.map(b=>b.maxX)), maxY: Math.max(...blocks.map(b=>b.maxY)), maxZ: Math.max(...blocks.map(b=>b.z)) },
       levels: [...new Set(blocks.map(b=>b.z))].sort((a,b)=>a-b), blockCount: blocks.length,
+      coordinateModel: 'byond-native-top-down', world: { maxX: Math.max(...blocks.map(b => b.maxX)), maxY: mapTop, maxZ: Math.max(...blocks.map(b => b.z)) }, diagnostics,
       types: [...counts].sort(([a],[b])=>a.localeCompare(b)).map(([path,instances])=>({path,instances})),
       limitations: ['No DM expression evaluation, inheritance, DMI rendering, runtime or save-state validation.','Sparse/offset blocks are preserved; rectangular world completeness is not asserted.'] };
   }
@@ -167,5 +186,6 @@ export function parseDmm(source, options = {}) {
     }
     return { results, matchedCells: matched, offset, limit, truncated: offset + results.length < matched, exhaustiveCount: true };
   }
-  return freeze({ source, keyWidth, cellCount, blocks: freeze(blocks), definitions: freeze([...dictionary.values()]), inspectCell, cells, summary, find });
+  const world = freeze({ maxX: Math.max(...blocks.map(b => b.maxX)), maxY: mapTop, maxZ: Math.max(...blocks.map(b => b.z)) });
+  return freeze({ source, keyWidth, cellCount, diagnostics, world, blocks: freeze(blocks), definitions: freeze([...dictionary.values()]), inspectCell, cells, summary, find });
 }

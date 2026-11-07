@@ -1,0 +1,14 @@
+"a" = (/turf/wall,/area/a)
+"b" = (/turf/wall,/area/b)
+"c" = (/turf/floor,/area/a)
+(1,1,1) = {"
+aaa
+bbb
+ccc
+"}
+(1,1,2) = {"
+b
+"}
+(2,2,3) = {"
+c
+"}
