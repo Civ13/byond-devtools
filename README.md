@@ -15,7 +15,8 @@ DMM inspection core and CLI**, not a finished visual editor or IDE.
 - Snapshot objects/arrays are frozen, and internal lookup maps are private.
 - Project-relative, realpath-contained UTF-8 file reads, SHA-256 provenance, and a
   deliberately lexical DME include inventory.
-- Synthetic tests plus an opt-in real-map smoke test. No game assets are vendored.
+- Synthetic tests, a TGM fixture, and a CI corpus job over every Civ13 map. No game
+  assets are vendored.
 
 ## Quick start
 
@@ -36,8 +37,9 @@ node src/cli.js summary --root /path/to/Civ13 --map maps/nomads/nomads_gaia.dmm 
 node src/cli.js project --root /path/to/Civ13 --dme civ13.dme
 ```
 
-The same commands work on Windows with the checkout's Windows path. Windows
-execution is not yet independently tested. Output is JSON; errors use stderr and
+The same commands work on Windows with the checkout's Windows path. CI runs the
+tests on Ubuntu and Windows with Node 22 and 24, and parses every map in a
+shallow Civ13 checkout on both (`npm run corpus -- --root PATH`). Output is JSON; errors use stderr and
 exit status 1. The CLI never writes maps.
 
 ## What this does NOT prove

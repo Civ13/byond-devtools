@@ -22,7 +22,7 @@ Executed in a Linux cloud workspace, Node.js v24.22.1, on 2026-11-07.
 Not run: native BYOND compilation/round-trip, DMI rendering, GUI tests, Windows or
 VS Code Stable/Insiders tests, runtime/gameplay/persistence acceptance. There is
 no serializer or edit operation, so this proves no-op observation only, not an
-edit-save round trip. CI has not yet been configured; commands above were local.
+edit-save round trip. CI was added afterwards; see the CI section below.
 
 Single local Gaia timing sample (not an editor benchmark): parser 28.7 ms, summary
 110.1 ms, process RSS 57.3 MiB. Hardware/runtime/cache state was not controlled;
@@ -36,3 +36,17 @@ Focused review found and fixed output amplification by shared overrides and a
 multiline-string include false positive. Added regression tests; search now
 returns compact coordinate/key references, and CLI JSON has a conservative 16 MiB
 preflight budget. Summary counts are aggregated by dictionary-key occupancy.
+
+## Continuous integration (phase 1, 2026-11-07)
+
+`.github/workflows/ci.yml` runs `npm run check` and `npm test` on ubuntu-latest and
+windows-latest with Node 22 and 24. A second job sparse-checks-out Civ13/Civ13
+`maps/` at its default branch head and runs `scripts/corpus.js`, which fails on any
+parse error or on fewer than 250 maps. Locally on Civ13 master e3a34ff: 279/279
+maps parsed (15 TGM style, 0 CRLF), 15,956,920 cells, about 2.6 s.
+
+Windows-specific tests use a junction for the escape test (directory symlinks need
+admin rights there), and check drive-letter, UNC, drive-relative and
+case-insensitive project paths. Those branches run only on the Windows jobs.
+The corpus job checks Civ13's own line endings (`*.dmm eol=lf`); whole-file CRLF
+input is covered by a unit test instead.

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --version
+      - run: npm run check
+      - run: npm test
+
+  corpus:
+    name: Civ13 map corpus (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Civ13/Civ13
+          path: civ13
+          sparse-checkout: maps
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse every Civ13 map
+        shell: bash
+        run: |
+          status=0
+          node scripts/corpus.js --root civ13 --maps maps --expect-at-least 250 > corpus-report.json || status=$?
+          node -e "const r=require('./corpus-report.json');console.log(r.parsed+'/'+r.maps+' maps parsed, '+r.cells+' cells, '+r.milliseconds+' ms');for(const f of r.failures)console.log('::error file='+f.file+'::'+f.message)"
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: corpus-report-${{ matrix.os }}
+          path: corpus-report.json
+          retention-days: 7

@@ -10,7 +10,7 @@ test('filesystem containment, size, UTF8 and symlink escape',async()=>{
  try{await writeFile(path.join(root,'ok'),'hello');await writeFile(path.join(outside,'out'),'private');
  assert.equal((await readProjectFile(root,'ok')).bytes,5);await assert.rejects(readProjectFile(root,'ok',2),/limit/);
  await assert.rejects(readProjectFile(root,path.join(outside,'out')),/relative/);
- await symlink(outside,path.join(root,'link'),'dir');await assert.rejects(readProjectFile(root,'link/out'),/escapes/);
+ await symlink(outside,path.join(root,'link'),process.platform==='win32'?'junction':'dir');await assert.rejects(readProjectFile(root,'link/out'),/escapes/);
  await writeFile(path.join(root,'bad'),Buffer.from([255]));await assert.rejects(readProjectFile(root,'bad'));
  }finally{await rm(root,{recursive:true});await rm(outside,{recursive:true});}
 });
