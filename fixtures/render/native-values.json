@@ -1,0 +1,113 @@
+{
+ "byond": "516.1688",
+ "types": {
+  "/turf/floor": {
+   "icon": "icons/floor.dmi",
+   "icon_state": "floor",
+   "dir": 2,
+   "layer": 2,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/turf/floor/grass": {
+   "icon": "icons/floor.dmi",
+   "icon_state": "grass",
+   "dir": 2,
+   "layer": 2,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/obj/box": {
+   "icon": "icons/objs.dmi",
+   "icon_state": "box",
+   "dir": 2,
+   "layer": 3,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/obj/box/high": {
+   "icon": "icons/objs.dmi",
+   "icon_state": "box",
+   "dir": 2,
+   "layer": 5,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/obj/tinted": {
+   "icon": "icons/objs.dmi",
+   "icon_state": "half",
+   "dir": 2,
+   "layer": 3,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": "#ff0000",
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/obj/ghost": {
+   "icon": "icons/objs.dmi",
+   "icon_state": "box",
+   "dir": 2,
+   "layer": 3,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 101
+  },
+  "/obj/broken": {
+   "icon": "icons/objs.dmi",
+   "icon_state": "nope",
+   "dir": 2,
+   "layer": 3,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/obj/tree": {
+   "icon": "icons/big.dmi",
+   "icon_state": "tree",
+   "dir": 2,
+   "layer": 5,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  },
+  "/mob/man": {
+   "icon": "icons/mob.dmi",
+   "icon_state": "man",
+   "dir": 2,
+   "layer": 4,
+   "plane": 0,
+   "pixel_x": 0,
+   "pixel_y": 0,
+   "color": null,
+   "alpha": 255,
+   "invisibility": 0
+  }
+ }
+}

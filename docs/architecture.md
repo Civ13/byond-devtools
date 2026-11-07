@@ -6,7 +6,7 @@
 DMM source --> bounded parser --> immutable authored snapshot
                                     |          |          |
                                   CLI      future UI   future agent API
-DME / DM / DMI --> future semantic/render adapters ----------+
+DME / DM / DMI --> type tree, DMI decoder, static renderer ---+
 ```
 
 The core (`src/dmm.js`) has no filesystem, network, shell, native compiler or DM
@@ -58,6 +58,11 @@ world size, which can exceed the highest placed row.
 5. Native map-load agreement: stub-typed maps compiled and booted in DreamDaemon
    516.1688, compared cell by cell (implemented, `scripts/native.js`).
 6. Full-game compilation and authorized isolated initialization/playtest (not run).
+7. Static preview (`src/render.js`, pure; `src/render-project.js`, I/O): a golden fixture
+   render with hand-checked pixels, fixture type defaults checked against DreamDaemon
+   instances, and CI renders of Civ13 crops that fail on any missing icon or state. Not
+   compared with a Dream Seeker screenshot; the cross-tile order of equal-layer sprites
+   (south over north) is an assumption.
 
 Static authored layout, initialized runtime world and persistent saved world must
 always be separate truth layers. A static preview does not show saved buildings or

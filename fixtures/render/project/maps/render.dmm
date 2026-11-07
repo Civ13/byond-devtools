@@ -1,0 +1,15 @@
+"a" = (/turf/floor,/area/zone)
+"b" = (/turf/floor/grass,/area/zone)
+"c" = (/obj/box{dir = 1},/turf/floor,/area/zone)
+"d" = (/obj/box/high,/obj/box{dir = 4; pixel_x = 2},/turf/floor/grass,/area/zone)
+"e" = (/obj/tinted,/mob/man,/turf/floor,/area/zone)
+"f" = (/obj/ghost,/obj/broken,/turf/floor,/area/zone)
+"g" = (/obj/tree,/turf/floor,/area/zone)
+"h" = (/obj/nonexistent,/turf/floor,/area/zone)
+"i" = (/obj/box{color = rgb(0,0,255)},/turf/floor,/area/zone)
+
+(1,1,1) = {"
+hag
+def
+ibc
+"}
