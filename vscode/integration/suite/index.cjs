@@ -19,6 +19,8 @@ async function run() {
   const api = await ext.activate();
   const mapFile = path.join(project, 'maps', 'render.dmm'), before = sha(mapFile);
   const config = vscode.workspace.getConfiguration('byondDevtools');
+  // The fixture folder holds two .dme files (render.dme, ingame.dme), so name the one to use.
+  await config.update('dme', 'render.dme', vscode.ConfigurationTarget.Global);
 
   await test('without a type tree the preview opens and explains what is missing', async () => {
     await config.update('typeTree', '', vscode.ConfigurationTarget.Global);
@@ -48,6 +50,7 @@ async function run() {
     assert.equal(vscode.workspace.textDocuments.filter(d => d.isDirty).length, 0);
   });
   await config.update('typeTree', undefined, vscode.ConfigurationTarget.Global);
+  await config.update('dme', undefined, vscode.ConfigurationTarget.Global);
   console.log(results.join('\n'));
   const failed = results.filter(r => r.startsWith('not ok'));
   if (failed.length) throw new Error(`${failed.length} VS Code test(s) failed\n${failed.join('\n')}`);
