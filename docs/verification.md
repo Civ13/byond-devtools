@@ -85,3 +85,19 @@ unsafe patches, a full key space, the atomic file apply (BOM, no temp file left,
 and the CLI. With `BYOND_BIN` set, an edited fixture map is loaded in DreamDaemon 516.1688
 and agrees cell by cell with the parser, including the new overrides. The corpus check runs
 in CI on Linux and Windows. Not run: an edit to a map followed by a full-game compile.
+
+## In-game render (phase 5b, 2026-11-07)
+
+`fixtures/render/project/ingame.dme` is a fixture world whose `New()` procs change an icon
+state, add an overlay, set a colour matrix and turn an object, plus a lighting-style plane
+master (multiply, constant alpha). `fixtures/render/ingame.dump.json` is its recorded dump
+from DreamDaemon 516.1688. `test/ingame.test.js` checks the dump holds those runtime changes
+and checks rendered pixels by hand-computed values: the master's half light, a lamp on the
+master's plane restoring full light, the 90 degree clockwise turn with its overlay, the
+colour matrix and invisibility. With `BYOND_BIN` set it re-records the dump and requires an
+exact match (CI native job). The Civ13 probe (`civ13` profile) compiles with 0 errors
+against Civ13 master in CI; it is not booted there.
+
+Not verified: a Civ13 boot and render (needs a separate go-ahead to run game code), and any
+comparison with Dream Seeker. The compositor's blend and plane-master semantics follow
+BYOND's documented behaviour and have not been checked against a client screenshot.

@@ -139,6 +139,35 @@ node src/cli.js render --root /path/to/Civ13 --dme civ13.dme --byond BIN \
   game), `invisible-skipped` (`--show-invisible` draws them), and `approximate-var` when a
   render var is an expression the resolver cannot prove. `--areas` also draws area icons.
 
+## In-game render
+
+`ingame` shows what the map looks like after the game has run: icons changed in
+`New()`/`Initialize()`, smoothing, runtime overlays and underlays, colour matrices,
+transforms, planes, plane masters and lighting. It **runs game code**: it compiles the
+project's `.dme` with a probe appended (in a temp folder; the checkout is not written),
+boots it in DreamDaemon with `-safe` on 127.0.0.1 with no saves and only `config/`
+copied in, waits until the round is playing and lighting has settled, records the final
+appearance of every atom in the region, and shuts down. Never point it at a live server.
+
+```sh
+node src/cli.js ingame --root /path/to/Civ13 --dme civ13.dme --byond BIN --profile civ13 \
+  --z 2 --x1 400 --y1 160 --x2 431 --y2 191 --time-of-day Midday --save-dump gaia.json --out gaia-ingame.png
+node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-render without booting
+```
+
+- Profiles say when a game is ready: `default` (plain worlds) and `civ13` (starts the
+  round like an admin's start-now, waits for lighting creation and its update queue, builds
+  the HUD's plane masters, turns webhooks and Tor checks off). `--map` swaps another map
+  into the `.dme`'s `BEGIN/END_SELECTED_MAP` block.
+- The image is composed by byond-devtools from the recorded appearances, not taken from a
+  client: planes in order, plane masters (colour matrix over the whole plane surface,
+  then their blend mode), layers, south over north, underlays/self/overlays with
+  inherited dir, colour, alpha, offsets and transform, blend modes, and `see_invisible`
+  of a living player.
+- Not modelled, counted in the report: filters (including the client's ambient-occlusion
+  shadow), maptext, `vis_contents`, animation past frame 1, `KEEP_TOGETHER` groups,
+  `client.color` and screen objects.
+
 ## Safe map edits
 
 `edit` replaces whole tile stacks at given coordinates. It is a dry run unless `--apply` is
