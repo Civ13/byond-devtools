@@ -80,3 +80,7 @@ test('live DreamMaker -o reproduces the recorded tree (set BYOND_BIN to run)', {
   assert.equal(live.compiler.errorCount, 0, live.compiler.errors.join('\n'));
   assert.equal(live.xml, project.xml);
 });
+test('vars DreamMaker leaves unclosed after a failed value are closed implicitly', () => {
+  const t = parseTypeTree('<dm><obj file="a.dm:1">obj<obj file="a.dm:1">x<var file="a.dm:2">snd<var file="a.dm:3">n<val file="a.dm:3">2</val></var></obj></obj></dm>');
+  assert.equal(t.recoveredTags, 1); assert.equal(t.lookupVar('/obj/x', 'n').printed, '2'); assert.ok(t.lookupVar('/obj/x', 'snd'));
+});

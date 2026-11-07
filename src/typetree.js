@@ -31,18 +31,22 @@ export function parseTypeTree(xml, { maxBytes = 64 * 1024 * 1024, maxTypes = 200
   const types = new Map(), stack = [];
   const tag = /<(\/?)([a-z]+)((?:\s+[a-z_]+="[^"]*")*)\s*(\/?)>/g;
   tag.lastIndex = start;
-  let m, pendingVar = null;
+  let m, pendingVar = null, recovered = 0;
   while ((m = tag.exec(xml))) {
     const [, closing, name, attrs, selfClosing] = m;
     const textEnd = xml.indexOf('<', tag.lastIndex), text = decode(xml.slice(tag.lastIndex, textEnd < 0 ? undefined : textEnd)).trim();
     const loc = parseLocation(/file="([^"]*)"/.exec(attrs)?.[1]);
     if (closing) {
       if (name === 'dm') break;
+      // DreamMaker leaves a <var> unclosed when its value fails to compile (for example a
+      // missing resource file). Close such vars implicitly; anything else is malformed.
+      while (stack.at(-1)?.tag === 'var' && name !== 'var') { stack.pop(); recovered++; }
       const top = stack.pop();
       if (!top || top.tag !== name) throw new TypeTreeError(`Mismatched </${name}>`);
       if (name === 'var') pendingVar = null;
       continue;
     }
+    if (name !== 'val' && name !== 'list' && name !== 'item' && stack.at(-1)?.tag === 'var') { stack.pop(); recovered++; pendingVar = null; }
     if (KINDS.has(name)) {
       const parent = stack.findLast(s => s.type)?.type;
       const path = (parent ? parent.path : '') + '/' + text;
@@ -73,10 +77,10 @@ export function parseTypeTree(xml, { maxBytes = 64 * 1024 * 1024, maxTypes = 200
       : type.lexicalParent ?? (BUILTIN_PARENT[type.path] ?? (type.path === '/datum' ? null : '/datum'));
     if (type.path === '/atom/movable' && !declared) type.parent = '/atom';
   }
-  return makeTree(types);
+  return makeTree(types, recovered);
 }
 
-function makeTree(types) {
+function makeTree(types, recovered = 0) {
   function has(path) { return types.has(path) || path in BUILTIN_PARENT || path === '/datum'; }
   /** Ancestors from the type itself up to /datum, stopping on cycles or unknown parents. */
   function chain(path) {
@@ -92,7 +96,7 @@ function makeTree(types) {
     return null;
   }
   function isA(path, ancestor) { return chain(path).includes(ancestor); }
-  return Object.freeze({ size: types.size, has, chain, lookupVar, isA, paths: () => [...types.keys()].sort(),
+  return Object.freeze({ size: types.size, recoveredTags: recovered, has, chain, lookupVar, isA, paths: () => [...types.keys()].sort(),
     get: path => { const t = types.get(path); return t ? { ...t, vars: [...t.vars.keys()].sort() } : null; } });
 }
 

@@ -38,7 +38,7 @@ try {
     const project=await loadProjectTypes({root:opts.root,dme:opts.dme,binDir:opts.byond,treeFile:opts.tree});
     const tree=parseTypeTree(project.xml), defines=collectDefines(project.defineSources);
     await project.preload([...new Set([...project.xml.matchAll(/file="([^":]+):\d+"/g)].map(m=>m[1]))]);
-    const provenance={dme:project.dme,truthLayer:'native-type-tree',source:opts.tree?'saved-tree':'DreamMaker -o',compilerExit:project.compiler?.status??null,compilerErrors:project.compiler?.errorCount??null,firstCompilerErrors:project.compiler?.errors?.slice(0,5)??[]};
+    const provenance={dme:project.dme,truthLayer:'native-type-tree',source:opts.tree?'saved-tree':'DreamMaker -o',recoveredTags:tree.recoveredTags,compilerExit:project.compiler?.status??null,compilerErrors:project.compiler?.errorCount??null,firstCompilerErrors:project.compiler?.errors?.slice(0,5)??[]};
     if(command==='types') {
       const RENDER=['icon','icon_state','layer','plane','dir','pixel_x','pixel_y','color','alpha','density','opacity'];
       if(opts.type) {
