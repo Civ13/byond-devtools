@@ -50,8 +50,11 @@ export function parseDmiMetadata(text) {
 /** Decode a DMI file. Returns an immutable icon with frame lookup and RGBA frame extraction. */
 export function decodeDmi(bytes, options = {}) {
   const png = decodePng(bytes, options), description = png.text.get('Description');
-  if (description === undefined) throw new DmiError('PNG has no DMI Description');
-  const meta = parseDmiMetadata(description), { width, height } = meta;
+  // A plain PNG used as an icon (icon = 'x.png') is one "" state the size of the image.
+  if (description === undefined && !options.plainPng) throw new DmiError('PNG has no DMI Description');
+  const meta = description === undefined
+    ? { version: null, width: png.width, height: png.height, states: [{ name: '', dirs: 1, frames: 1, delay: null, loop: 0, rewind: false, movement: false, hotspot: null, extra: {} }] }
+    : parseDmiMetadata(description), { width, height } = meta;
   const columns = Math.floor(png.width / width), rows = Math.floor(png.height / height);
   if (columns < 1 || rows < 1) throw new DmiError('Image smaller than one icon');
   let index = 0;
@@ -86,7 +89,7 @@ export function decodeDmi(bytes, options = {}) {
     return out;
   }
   return Object.freeze({ version: meta.version, width, height, states: Object.freeze(states), sheet: { width: png.width, height: png.height, columns, rows },
-    colorType: png.colorType, bitDepth: png.bitDepth, findState, frameIndex, frame });
+    colorType: png.colorType, bitDepth: png.bitDepth, plain: description === undefined, findState, frameIndex, frame });
 }
 
 /** BYOND GetPixel-style colour text: null when transparent, #rrggbb when opaque, else #rrggbbaa. */

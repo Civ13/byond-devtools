@@ -80,7 +80,7 @@ try {
       dump=run.dump;
       if(opts['save-dump']) await writeFile(opts['save-dump'],JSON.stringify(dump)+'\n',{flag:'wx'});
     }
-    const icons=dump.icons.map(i=>{ try { return i.base64?decodeDmi(Buffer.from(i.base64,'base64')):null; } catch { return null; } });
+    const icons=dump.icons.map(i=>{ try { return i.base64?decodeDmi(Buffer.from(i.base64,'base64'),{plainPng:true}):null; } catch { return null; } });
     const r=renderIngame(dump,icons);
     await writeFile(opts.out,encodePng(r,{text:{Comment:`byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`}}),{flag:opts.force?'w':'wx'});
     result={schemaVersion:1,provenance:{...dump.provenance,byond:dump.byond,region:dump.region,timeOfDay:dump.time_of_day,seconds:run?.seconds??null,runtimeErrors:run?.runtimeErrors??null},

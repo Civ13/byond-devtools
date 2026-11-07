@@ -128,6 +128,8 @@ jobs:
             maps
             icons
             interface
+            sound
+            UI
           sparse-checkout-cone-mode: true
           fetch-depth: 1
       - uses: actions/setup-node@v5
