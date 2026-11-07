@@ -1,0 +1,9 @@
+"a" = (/obj/item{name = "crate, small"; pixel_x = -4; amount = 3},/obj/item,/mob/dummy{name = "x;y"},/turf/floor,/turf/wall{name = "Wall"},/area/a)
+"b" = (/obj/item/sub{custom_flag = 7; marker_ref = /obj/marker},/area/b)
+"c" = (/turf/floor/grass,/turf/floor,/turf/wall,/area/a)
+"d" = (/obj/marker)
+"e" = (/mob/dummy,/obj/item{color = "#DDDDDD"},/mob/dummy/other,/obj/marker{color = "#FFFFFF"},/obj/item/sub{step_y = 8},/turf/floor{color = "#A0b1C2"},/area/a)
+(1,1,1) = {"
+abcde
+edcba
+"}
