@@ -10,6 +10,8 @@
   read-only milestone. Native BYOND runs are limited to `src/native.js` stub projects
   (generated types, `-safe`, temp directory); they never run game code. `DreamMaker -o`
   for the type tree runs from a temp probe so nothing is written into the project.
+- The only file write is `render --out` (one PNG, no overwrite without `--force`).
+  The renderer core (`src/render.js`) stays pure; file access lives in `src/render-project.js`.
 - Do not vendor Civ13 maps/assets or third-party source without license review.
 - Report passed, failed and unrun checks separately. Parser success is not native
   compile, gameplay validation, or a finished editor.

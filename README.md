@@ -46,8 +46,8 @@ exit status 1. The CLI never writes maps.
 
 Passing the parser is not full-game compilation or playability validation. Overrides
 remain raw DM expressions, never evaluated. No inheritance, active conditional
-includes, DMI sprite rendering, lighting, smoothing, pathfinding, runtime state or
-persistent saves are resolved. The `--dme` option binds the file hash but does not
+includes, lighting, smoothing, runtime overlays, pathfinding, runtime state or
+persistent saves are resolved; the static preview shows authored source plus type defaults. The `--dme` option binds the file hash but does not
 resolve its type environment. Unknown paths are retained, not silently removed.
 
 Sparse/offset blocks are placed the way BYOND 516 places them (header y counts down
@@ -66,7 +66,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 ## Roadmap
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
-2. Native type tree and DMI decoding (done); coordinate-linked static rendering.
+2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
 3. Read-only VS Code custom editor, installed/tested separately in Stable/Insiders.
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    semantic/visual diff, inverse patch and verified unchanged regions.
@@ -113,6 +113,31 @@ zero differences. Recorded lookup rules: a duplicated state name uses the first 
 movement lookup with no movement state, a direction the state lacks, or a frame past
 its count returns nothing. The renderer's display fallback (`{display: true}`) is not yet
 checked natively.
+
+## Static map preview
+
+`render` draws a bounded region of a map as a PNG from the authored map and the native
+type tree, with icons decoded from the checkout. It is a preview of authored source plus
+compiled type defaults, **not a client screenshot**.
+
+```sh
+node src/cli.js render --root /path/to/Civ13 --dme civ13.dme --byond BIN \
+  --map maps/nomads/nomads_gaia.dmm --z 2 --x1 400 --y1 160 --x2 463 --y2 223 --grid 16 --out gaia.png
+```
+
+- Writes only the `--out` PNG, refuses to overwrite it without `--force`, and renders at
+  most 128x128 tiles and 16 Mpx. Icon files are read inside `--root` only.
+- Draw order: plane, layer, then south rows over north rows, then the tile's native
+  contents order (turfs, objs, mobs). Icons anchor at the tile's bottom-left and use
+  `icon_state`, `dir`, `pixel_x/y/w/z`, hex `color` and `alpha` (frame 1).
+- Map overrides apply when they are plain values; type defaults use the same resolver as
+  `types`. Fixture defaults are checked against DreamDaemon instance values.
+- Not modelled: `New()`/`Initialize()` changes, runtime overlays and smoothing, lighting,
+  animation past frame 1, filters, transforms, colour matrices, `see_invisible`.
+- Everything not drawn exactly is counted in the JSON report: `unknown-type` and
+  `missing-icon` draw a magenta/black placeholder, `missing-state` draws nothing (as in
+  game), `invisible-skipped` (`--show-invisible` draws them), and `approximate-var` when a
+  render var is an expression the resolver cannot prove. `--areas` also draws area icons.
 
 ## Native BYOND agreement
 

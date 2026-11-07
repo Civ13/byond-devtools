@@ -112,11 +112,19 @@ jobs:
           node src/cli.js lint --root civ13 --map maps/nomads/nomads_gaia.dmm --dme civ13.dme --byond "$BYOND_BIN" > civ13-gaia-lint.json || status=$?
           node -e "const r=require('./civ13-gaia-lint.json');console.log(JSON.stringify(r.data.counts));for(const p of r.data.problems.slice(0,20))console.log('::error::'+JSON.stringify(p))"
           exit $status
+      - name: Render Civ13 crops (every icon must be found)
+        shell: bash
+        run: |
+          node src/cli.js render --root civ13 --dme civ13.dme --byond "$BYOND_BIN" --map maps/nomads/nomads_gaia.dmm --z 2 --x1 400 --y1 160 --x2 463 --y2 223 --grid 16 --out civ13-gaia.png > civ13-gaia-render.json
+          node src/cli.js render --root civ13 --dme civ13.dme --byond "$BYOND_BIN" --map maps/1943/berlin.dmm --x1 1 --y1 1 --x2 64 --y2 64 --out civ13-berlin.png > civ13-berlin-render.json
+          node -e "for(const f of ['gaia','berlin']){const r=require('./civ13-'+f+'-render.json');console.log(f,r.data.drawn+' sprites',JSON.stringify(r.data.diagnostics));if(r.data.diagnostics.some(d=>/^missing-/.test(d.code)))process.exitCode=1}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: civ13-types
-          path: civ13-*.json
+          path: |
+            civ13-*.json
+            civ13-*.png
           retention-days: 7
 
   native:
@@ -157,11 +165,12 @@ jobs:
           LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
       - name: Live fixture agreement (map load, type tree, instance values)
         run: node --test test/native.test.js test/typetree.test.js test/dmi.test.js
-      - name: Re-record the type tree and icon pixel fixtures and diff
+      - name: Re-record the type tree, icon pixel and render fixtures and diff
         run: |
           node scripts/record-types-fixture.js --byond "$BYOND_BIN"
           node scripts/native-icons.js record --byond "$BYOND_BIN"
-          git diff --exit-code -- fixtures/types fixtures/dmi
+          node scripts/make-render-fixtures.js --byond "$BYOND_BIN" --golden
+          git diff --exit-code -- fixtures/types fixtures/dmi fixtures/render
       - name: Civ13 icons decode exactly as DreamDaemon GetPixel reads them
         run: |
           node scripts/native-icons.js corpus --byond "$BYOND_BIN" --root civ13/icons > native-icons.json

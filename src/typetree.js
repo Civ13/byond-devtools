@@ -147,7 +147,11 @@ export function resolveVar(entry, sourceLine, defines = new Map()) {
   if (text == null) return { status: 'unresolved', raw: null, value: undefined, reason: 'source line unavailable' };
   const m = new RegExp(`(?:^|[\\s/])${entry.name}\\s*=\\s*(.*)$`).exec(stripComment(text));
   if (!m) return { status: entry.printed === null ? 'unset' : 'unresolved', raw: null, value: undefined, reason: 'no assignment on the declaring line' };
-  const raw = m[1].trim().replace(/;$/, '').trim();
+  return parseValue(m[1].trim().replace(/;$/, '').trim(), defines);
+}
+
+/** Resolve one DM value expression the same way: literal, macro for a literal, simple arithmetic. */
+export function parseValue(raw, defines = new Map()) {
   if (LITERAL.test(raw)) return { status: 'literal', raw, value: literalValue(raw) };
   const body = /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? defines.get(raw) : undefined;
   if (body && LITERAL.test(body.trim())) return { status: 'define', raw, value: literalValue(body.trim()) };

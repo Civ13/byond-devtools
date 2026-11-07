@@ -1,0 +1,4 @@
+// Fixture project for the static renderer tests. Never compiled into a game.
+#define OBJ_LAYER 3
+#define MOB_LAYER 4
+#include "code/types.dm"

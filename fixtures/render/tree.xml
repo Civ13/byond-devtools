@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<dm>
+
+	<object file="code/types.dm:1">world
+		<var file="code/types.dm:2">icon_size
+			<val file="code/types.dm:2">8</val>
+		</var>
+	</object>
+	<area file="code/types.dm:3">area
+		<area file="code/types.dm:3">zone</area>
+	</area>
+	<turf file="code/types.dm:4">turf
+		<turf file="code/types.dm:4">floor
+			<var file="code/types.dm:5">icon
+				<val file="code/types.dm:5">'icons/floor.dmi'</val>
+			</var>
+			<var file="code/types.dm:6">icon_state
+				<val file="code/types.dm:6">"floor"</val>
+			</var>
+			<turf file="code/types.dm:7">grass
+				<var file="code/types.dm:8">icon_state
+					<val file="code/types.dm:8">"grass"</val>
+				</var>
+			</turf>
+		</turf>
+	</turf>
+	<obj file="code/types.dm:9">obj
+		<obj file="code/types.dm:9">box
+			<var file="code/types.dm:10">icon
+				<val file="code/types.dm:10">'icons/objs.dmi'</val>
+			</var>
+			<var file="code/types.dm:11">icon_state
+				<val file="code/types.dm:11">"box"</val>
+			</var>
+			<var file="code/types.dm:12">layer
+				<val file="code/types.dm:12">3</val>
+			</var>
+			<obj file="code/types.dm:13">high
+				<var file="code/types.dm:14">layer
+					<val file="code/types.dm:14">32</val>
+				</var>
+			</obj>
+		</obj>
+		<obj file="code/types.dm:15">tinted
+			<var file="code/types.dm:16">icon
+				<val file="code/types.dm:16">'icons/objs.dmi'</val>
+			</var>
+			<var file="code/types.dm:17">icon_state
+				<val file="code/types.dm:17">"half"</val>
+			</var>
+			<var file="code/types.dm:18">color
+				<val file="code/types.dm:18">"#ff0000"</val>
+			</var>
+		</obj>
+		<obj file="code/types.dm:19">ghost
+			<var file="code/types.dm:20">icon
+				<val file="code/types.dm:20">'icons/objs.dmi'</val>
+			</var>
+			<var file="code/types.dm:21">icon_state
+				<val file="code/types.dm:21">"box"</val>
+			</var>
+			<var file="code/types.dm:22">invisibility
+				<val file="code/types.dm:22">101</val>
+			</var>
+		</obj>
+		<obj file="code/types.dm:23">broken
+			<var file="code/types.dm:24">icon
+				<val file="code/types.dm:24">'icons/objs.dmi'</val>
+			</var>
+			<var file="code/types.dm:25">icon_state
+				<val file="code/types.dm:25">"nope"</val>
+			</var>
+		</obj>
+		<obj file="code/types.dm:26">tree
+			<var file="code/types.dm:27">icon
+				<val file="code/types.dm:27">'icons/big.dmi'</val>
+			</var>
+			<var file="code/types.dm:28">icon_state
+				<val file="code/types.dm:28">"tree"</val>
+			</var>
+			<var file="code/types.dm:29">layer
+				<val file="code/types.dm:29">5</val>
+			</var>
+		</obj>
+	</obj>
+	<mob file="code/types.dm:30">mob
+		<mob file="code/types.dm:30">man
+			<var file="code/types.dm:31">icon
+				<val file="code/types.dm:31">'icons/mob.dmi'</val>
+			</var>
+			<var file="code/types.dm:32">icon_state
+				<val file="code/types.dm:32">"man"</val>
+			</var>
+			<var file="code/types.dm:33">layer
+				<val file="code/types.dm:33">4</val>
+			</var>
+		</mob>
+	</mob>
+</dm>

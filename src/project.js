@@ -79,7 +79,7 @@ export async function loadProjectTypes({ root, dme, binDir, treeFile, timeoutMs 
       // DreamMaker -o prints the tree even when compilation fails, so errors must be surfaced.
       compiler = { status: r.status, errors: messages.split(/\r?\n/).filter(l => /:error:/.test(l)).map(l => l.split(prefixOf(projectRoot)).join('')).slice(0, 50),
         errorCount: (messages.match(/:error:/g) || []).length };
-      if (!xml.includes('<dm>')) throw new Error(`DreamMaker -o produced no object tree (exit ${r.status}): ${compiler.stderr.slice(-500)}`);
+      if (!xml.includes('<dm>')) throw new Error(`DreamMaker -o produced no object tree (exit ${r.status}): ${messages.slice(-500)}`);
     } finally { await rm(dir, { recursive: true, force: true }); }
   }
   // Make file attributes project-relative so diagnostics match the checkout.
