@@ -79,7 +79,7 @@ try {
   const list = async (name, files) => { const f = path.join(dir, name); await writeFile(f, files.join('\n')); return f; };
   const rt = spawnSync(python, [...pyArgs, '-c', ROUNDTRIP, path.join(root, 'tools'), await list('first.txt', pending.flatMap(p => [p.orig, p.edited]))], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (rt.status !== 0) throw new Error(`mapmerge2 round trip failed: ${rt.stderr}`);
-  const lines = rt.stdout.split('\n').filter(l => l.startsWith('RESULT ')).map(l => l.slice(7)); // mapmerge2 prints warnings too
+  const lines = rt.stdout.split(/\r?\n/).filter(l => l.startsWith('RESULT ')).map(l => l.slice(7)); // mapmerge2 prints warnings too
   const normalized = [];
   for (const [j, p] of pending.entries()) {
     const [o, e] = [lines[2 * j], lines[2 * j + 1]];
@@ -89,13 +89,14 @@ try {
   // Maps mapmerge2 itself would rewrite: edit its normalized output instead, which must then be stable.
   const second = [];
   for (const p of normalized) {
-    const text = await readFile(p.orig + '.norm', 'utf8');
+    const text = await readFile(p.orig + '.norm', 'utf8').catch(() => null);
+    if (text === null) { failures.push(`${p.file}: mapmerge2 reported a difference but wrote no normalized copy`); continue; }
     try { const r = planEdit(text, { edits: sampleEdits(parseDmm(text)) }); await writeFile(p.edited + '.norm', r.text); second.push(p); }
     catch (e) { failures.push(`${p.file} (mapmerge2-normalized): ${e.message}`); }
   }
   if (second.length) {
     const rt2 = spawnSync(python, [...pyArgs, '-c', ROUNDTRIP, path.join(root, 'tools'), await list('second.txt', second.map(p => p.edited + '.norm'))], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    const l2 = rt2.stdout.split('\n').filter(l => l.startsWith('RESULT ')).map(l => l.slice(7));
+    const l2 = rt2.stdout.split(/\r?\n/).filter(l => l.startsWith('RESULT ')).map(l => l.slice(7));
     second.forEach((p, j) => { if (l2[j] === 'same') stats.mapmergeNormalizedSame++; else failures.push(`${p.file}: mapmerge2 rewrites the edited normalized map (${l2[j]})`); });
   }
   // maplint: no new errors compared with the original.
