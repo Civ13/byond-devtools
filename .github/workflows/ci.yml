@@ -156,11 +156,16 @@ jobs:
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
           LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
       - name: Live fixture agreement (map load, type tree, instance values)
-        run: node --test test/native.test.js test/typetree.test.js
-      - name: Re-record the type tree fixture and diff
+        run: node --test test/native.test.js test/typetree.test.js test/dmi.test.js
+      - name: Re-record the type tree and icon pixel fixtures and diff
         run: |
           node scripts/record-types-fixture.js --byond "$BYOND_BIN"
-          git diff --exit-code -- fixtures/types
+          node scripts/native-icons.js record --byond "$BYOND_BIN"
+          git diff --exit-code -- fixtures/types fixtures/dmi
+      - name: Civ13 icons decode exactly as DreamDaemon GetPixel reads them
+        run: |
+          node scripts/native-icons.js corpus --byond "$BYOND_BIN" --root civ13/icons > native-icons.json
+          node -e "const r=require('./native-icons.json');console.log(r.icons+' icons, '+r.pixels+' pixels, '+r.mismatches+' mismatches')"
       - name: Re-record fixtures and diff against the checked-in recordings
         run: |
           node scripts/native.js check --byond "$BYOND_BIN" --record fixtures/native fixtures/native/*.dmm > native-fixtures.json

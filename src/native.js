@@ -137,3 +137,43 @@ export async function recordInstanceVars({ root, dme, types, vars, binDir, timeo
     return JSON.parse(await readFile(path.join(dir, 'values.json'), 'utf8'));
   } finally { await rm(dir, { recursive: true, force: true }); }
 }
+
+/**
+ * Ask DreamDaemon for icon pixels with icon.GetPixel. `files` maps a DMI path (readable by the
+ * caller) to queries [{state, dir, frame, moving, x, y}] where x/y are 1-based from the top-left.
+ * Files are copied into the temp project, so DreamDaemon runs with -safe and reads nothing else.
+ * Returns {byond, results: {path: [colour text | null]}}.
+ */
+export async function recordIconPixels({ files, binDir, timeoutMs = 300000 }) {
+  const { copyFile } = await import('node:fs/promises');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'byond-pixels-'));
+  try {
+    const plan = [];
+    let n = 0;
+    for (const [source, queries] of Object.entries(files)) {
+      const local = `icon${n++}.dmi`; await copyFile(source, path.join(dir, local));
+      plan.push({ source, local, queries });
+    }
+    await writeFile(path.join(dir, 'queries.json'), JSON.stringify(plan.map(p => ({ file: p.local, q: p.queries.map(q => [q.state, q.dir, q.frame, q.moving ? 1 : 0, q.x, q.y]) }))));
+    await writeFile(path.join(dir, 'probe.dme'), `/world/New()
+	var/list/plan = json_decode(file2text("queries.json"))
+	var/list/out = list()
+	for(var/list/entry in plan)
+		var/icon/I = icon(file(entry["file"]))
+		var/list/row = list()
+		var/height = I.Height()
+		for(var/list/q in entry["q"])
+			row += I.GetPixel(q[5], height - q[6] + 1, q[1], q[2], q[3], q[4] ? 1 : 0)
+		out += list(row)
+	text2file(json_encode(list("byond" = "[world.byond_version].[world.byond_build]", "results" = out)), "pixels.json")
+	shutdown()
+`);
+    const env = { ...process.env, LD_LIBRARY_PATH: [binDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter) };
+    const c = spawnSync(tool(binDir, 'DreamMaker'), ['-clean', 'probe.dme'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
+    if (!/ 0 errors/.test(c.stdout || '')) throw new Error(`pixel probe compile failed: ${c.stdout}${c.stderr}`);
+    const r = spawnSync(tool(binDir, 'DreamDaemon'), ['probe.dmb', '-safe', '-invisible', '-quiet'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
+    let text; try { text = await readFile(path.join(dir, 'pixels.json'), 'utf8'); } catch { throw new Error(`pixel probe produced no output: ${r.stdout}${r.stderr}`); }
+    const dump = JSON.parse(text);
+    return { byond: dump.byond, results: Object.fromEntries(plan.map((p, i) => [p.source, dump.results[i]])) };
+  } finally { await rm(dir, { recursive: true, force: true }); }
+}

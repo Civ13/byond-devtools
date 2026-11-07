@@ -66,7 +66,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 ## Roadmap
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
-2. Native type tree (done); DMI decoding and coordinate-linked static rendering.
+2. Native type tree and DMI decoding (done); coordinate-linked static rendering.
 3. Read-only VS Code custom editor, installed/tested separately in Stable/Insiders.
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    semantic/visual diff, inverse patch and verified unchanged regions.
@@ -95,6 +95,24 @@ unresolved with its source text. Fixture values are checked against instances cr
 in DreamDaemon. On Civ13 every `icon`, `icon_state`, `layer` and `plane` of all 11,289
 atom types resolves. `lint` exits 3 when it finds unknown types or overrides of undeclared
 vars. It complements Civ13's `scripts/maplint.py`, which checks tile structure.
+
+## DMI icons
+
+`src/png.js` and `src/dmi.js` are an original, dependency-free PNG and DMI decoder: all
+non-interlaced colour types and bit depths, `tRNS` transparency, every row filter, and
+the `Description` metadata (states, dirs, frames, delays, movement states). Interlaced
+PNGs and malformed metadata are rejected with an error.
+
+```sh
+node src/cli.js icon --root /path/to/Civ13 --dmi icons/obj/closet.dmi
+```
+
+Pixels are checked against DreamDaemon's `icon.GetPixel`: every pixel of 15 fixtures
+(one per colour type and depth), and a 24,660-pixel sample over all 384 Civ13 icons, with
+zero differences. Recorded lookup rules: a duplicated state name uses the first state; a
+movement lookup with no movement state, a direction the state lacks, or a frame past
+its count returns nothing. The renderer's display fallback (`{display: true}`) is not yet
+checked natively.
 
 ## Native BYOND agreement
 
