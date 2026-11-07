@@ -37,13 +37,14 @@ class MapPreviewProvider {
       session = await openSession({ text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), root, mapRelative: path.relative(root, document.uri.fsPath),
         dme: folder ? await findDme(folder) : null, treeFile: resolve(config.get('typeTree')), byondBin: config.get('byondBin') || undefined, core: coreDir(path.join(__dirname, 'lib')) });
     } catch (e) { post({ type: 'error', message: e.message }); return; }
-    const record = { uri: document.uri.toString(), session, panel, lastRender: null };
+    const record = { uri: document.uri.toString(), session, panel, lastRender: null, displayed: null };
     sessions.add(record);
     panel.onDidDispose(() => sessions.delete(record));
     panel.webview.onDidReceiveMessage(async m => {
       try {
         if (m.type === 'ready') post({ type: 'summary', summary: session.summary() });
         else if (m.type === 'inspect') post({ type: 'cell', cell: session.inspect(m.x, m.y, m.z) });
+        else if (m.type === 'displayed') record.displayed = { width: m.width, height: m.height, error: m.error };
         else if (m.type === 'render') { const r = await session.render(m.view); record.lastRender = r; post({ type: 'image', ...r }); }
       } catch (e) { post({ type: 'error', message: e.message }); }
     });
@@ -55,7 +56,7 @@ function html(webview, media) {
   const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'viewer.js'));
   const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'viewer.css'));
   return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${style}"></head><body>
 <header><span id="title">BYOND map preview (read-only)</span>
 <label>z <select id="z"></select></label>
@@ -76,7 +77,7 @@ function activate(context) {
   // Test hook: lets the integration tests drive and inspect open previews.
   return {
     viewType: VIEW_TYPE,
-    sessions: () => [...sessions].map(s => ({ uri: s.uri, summary: s.session.summary(), inspect: (x, y, z) => s.session.inspect(x, y, z), render: v => s.session.render(v) })),
+    sessions: () => [...sessions].map(s => ({ uri: s.uri, summary: s.session.summary(), displayed: s.displayed, inspect: (x, y, z) => s.session.inspect(x, y, z), render: v => s.session.render(v) })),
   };
 }
 function deactivate() {}
