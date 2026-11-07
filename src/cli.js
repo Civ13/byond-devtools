@@ -7,8 +7,11 @@ import { overrideAssignments } from './world.js';
 import { decodeDmi } from './dmi.js';
 import { loadRenderer, renderMap } from './render-project.js';
 import { editMapFile } from './edit-project.js';
+import { recordIngame, PROFILES } from './ingame.js';
+import { renderIngame } from './ingame-render.js';
+import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|edit> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -18,11 +21,15 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   render: --map FILE --dme FILE (--byond BIN | --tree FILE) --out FILE.png [--z N] [--x1 N --y1 N --x2 N --y2 N]
           [--grid N] [--areas] [--show-invisible] [--icon-size N] [--force]
           static preview from authored source + type defaults (not a client screenshot); at most 128x128 tiles
+  ingame: --dme FILE --byond BIN --out FILE.png --x1 N --y1 N --x2 N --y2 N --z N [--profile default|civ13]
+          [--map FILE] [--time-of-day NAME] [--save-dump FILE.json] [--force]   or: --dump FILE.json --out FILE.png
+          boots the game headless in a temp folder (RUNS GAME CODE: -safe, 127.0.0.1, no saves) and renders the
+          initialized world: runtime icons, overlays, colour matrices, planes and lighting
   edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json]
           dry run by default; --apply replaces the map atomically after checking base sha256 and expected stacks
 No DM execution or server access. Only render --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -39,7 +46,7 @@ function integer(value, name, fallback) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','edit'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -56,6 +63,29 @@ try {
     await writeFile(opts.out,png,{flag:opts.force?'w':'wx'});
     result=({schemaVersion:1,provenance:{...provenance,compilerErrors:renderer.project.compiler?.errorCount??null},data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,holes:r.holes,diagnostics:r.diagnostics,
       notModelled:['New()/Initialize() changes','runtime overlays and smoothing','lighting','animation past frame 1','filters and transforms','colour matrices','see_invisible']}});
+  }
+  else if(command==='ingame') {
+    if(!opts.out || !/\.png$/i.test(opts.out)) throw new Error('--out must name a .png file');
+    const exists=async f=>{ try { return !!(await lstat(f)); } catch { return false; } };
+    if(await exists(opts.out) && !opts.force) throw new Error(`${opts.out} exists; pass --force to overwrite`);
+    if(opts['save-dump'] && await exists(opts['save-dump'])) throw new Error(`${opts['save-dump']} exists`);
+    let dump, run=null;
+    if(opts.dump) dump=JSON.parse(await readFile(opts.dump,'utf8'));
+    else {
+      if(!dme) throw new Error('--dme is required'); if(!opts.byond) throw new Error('--byond is required');
+      const profile=opts.profile??'default'; if(!PROFILES.includes(profile)) throw new Error(`--profile must be one of ${PROFILES.join(', ')}`);
+      const region={}; for(const k of ['x1','y1','x2','y2','z']) region[k]=integer(opts[k],k);
+      run=await recordIngame({root:opts.root,dme:opts.dme,map:opts.map,binDir:opts.byond,profile,region,timeOfDay:opts['time-of-day'],onPhase:p=>console.error(JSON.stringify({phase:p}))});
+      if(run.status!=='ok') { const e=new Error(`in-game run ${run.status}: ${run.failure??''}`); e.details=run; console.error(JSON.stringify({compiler:run.compiler,runtime:run.runtime?.slice(-4000)})); throw e; }
+      dump=run.dump;
+      if(opts['save-dump']) await writeFile(opts['save-dump'],JSON.stringify(dump)+'\n',{flag:'wx'});
+    }
+    const icons=dump.icons.map(i=>{ try { return i.base64?decodeDmi(Buffer.from(i.base64,'base64')):null; } catch { return null; } });
+    const r=renderIngame(dump,icons);
+    await writeFile(opts.out,encodePng(r,{text:{Comment:`byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`}}),{flag:opts.force?'w':'wx'});
+    result={schemaVersion:1,provenance:{...dump.provenance,byond:dump.byond,region:dump.region,timeOfDay:dump.time_of_day,seconds:run?.seconds??null,runtimeErrors:run?.runtimeErrors??null},
+      data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,diagnostics:r.diagnostics,
+        notModelled:['filters (incl. client ambient occlusion)','maptext','vis_contents','animation past frame 1','KEEP_TOGETHER groups','client.color and screen objects']}};
   }
   else if(command==='edit') {
     if(!opts.map) throw new Error('--map is required'); if(!opts.patch) throw new Error('--patch is required');

@@ -1,0 +1,7 @@
+// In-game render fixture: the render fixture types plus runtime changes. Compiled only with
+// the byond-devtools in-game probe appended (default profile). Never compiled into a game.
+#define OBJ_LAYER 3
+#define MOB_LAYER 4
+#include "code/types.dm"
+#include "code/ingame.dm"
+#include "maps/ingame.dmm"

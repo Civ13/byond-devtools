@@ -1,0 +1,11 @@
+"a" = (/turf/floor,/area/zone)
+"b" = (/obj/box{dir = 4},/turf/floor,/area/zone)
+"c" = (/obj/tinted,/turf/floor,/area/zone)
+"d" = (/obj/lamp,/turf/floor,/area/zone)
+"e" = (/obj/box/turned,/turf/floor/grass,/area/zone)
+"f" = (/obj/ghost,/turf/floor,/area/zone)
+
+(1,1,1) = {"
+bad
+cef
+"}

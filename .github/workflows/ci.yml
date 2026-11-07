@@ -122,6 +122,12 @@ jobs:
           node src/cli.js lint --root civ13 --map maps/nomads/nomads_gaia.dmm --dme civ13.dme --byond "$BYOND_BIN" > civ13-gaia-lint.json || status=$?
           node -e "const r=require('./civ13-gaia-lint.json');console.log(JSON.stringify(r.data.counts));for(const p of r.data.problems.slice(0,20))console.log('::error::'+JSON.stringify(p))"
           exit $status
+      - name: Civ13 in-game probe compiles (not run)
+        shell: bash
+        run: |
+          node -e "import('./src/ingame.js').then(async m=>{const s=await m.probeSource({root:'civ13',dme:'civ13.dme',profile:'civ13'});require('fs').mkdirSync('probe-check');require('fs').writeFileSync('probe-check/probe.dme',s.text)})"
+          (cd probe-check && LD_LIBRARY_PATH="$BYOND_BIN" "$BYOND_BIN/DreamMaker" -max_errors 0 probe.dme | tail -3 | tee ../civ13-probe-compile.txt)
+          grep -q " 0 errors" civ13-probe-compile.txt
       - name: Render Civ13 crops (every icon must be found)
         shell: bash
         run: |
@@ -174,7 +180,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
           LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
       - name: Live fixture agreement (map load, type tree, instance values)
-        run: node --test test/native.test.js test/typetree.test.js test/dmi.test.js
+        run: node --test test/native.test.js test/typetree.test.js test/dmi.test.js test/edit.test.js test/ingame.test.js
       - name: Re-record the type tree, icon pixel and render fixtures and diff
         run: |
           node scripts/record-types-fixture.js --byond "$BYOND_BIN"

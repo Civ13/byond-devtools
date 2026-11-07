@@ -63,7 +63,10 @@ world size, which can exceed the highest placed row.
    instances, and CI renders of Civ13 crops that fail on any missing icon or state. Not
    compared with a Dream Seeker screenshot; the cross-tile order of equal-layer sprites
    (south over north) is an assumption.
-8. Copy-on-write edits (`src/edit.js`): base-hash and expected-stack preconditions, re-parse
+8. In-game render (`src/ingame.js`, `src/ingame-render.js`): truth layer
+   `native-initialized-world`, a recorded fixture dump with hand-checked composition, an
+   exact re-record in CI, and a compile check of the Civ13 probe.
+9. Copy-on-write edits (`src/edit.js`): base-hash and expected-stack preconditions, re-parse
    verification of every cell, mapmerge2 byte stability and maplint on the whole Civ13
    corpus, and native load agreement of an edited fixture.
 
