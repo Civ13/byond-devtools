@@ -1,8 +1,8 @@
 # BYOND Devtools
 
 An early development toolkit for trustworthy BYOND map observation and, later,
-editing from a shared human/agent model. This repository starts with a **read-only
-DMM inspection core and CLI**, not a finished visual editor or IDE.
+editing from a shared human/agent model. It is a **DMM inspection, preview and safe-edit
+core with a CLI**, not a finished visual editor or IDE.
 
 ## Working now
 
@@ -40,7 +40,7 @@ node src/cli.js project --root /path/to/Civ13 --dme civ13.dme
 The same commands work on Windows with the checkout's Windows path. CI runs the
 tests on Ubuntu and Windows with Node 22 and 24, and parses every map in a
 shallow Civ13 checkout on both (`npm run corpus -- --root PATH`). Output is JSON; errors use stderr and
-exit status 1. The CLI never writes maps.
+exit status 1. Only `edit --apply` writes a map (see below).
 
 ## What this does NOT prove
 
@@ -69,7 +69,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
 3. Read-only VS Code custom editor, installed/tested separately in Stable/Insiders.
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
-   semantic/visual diff, inverse patch and verified unchanged regions.
+   inverse patch and verified unchanged regions (done; visual diff to follow).
 5. Prefabs, generator-aware tools, spatial contracts and local agent API/MCP.
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
@@ -138,6 +138,40 @@ node src/cli.js render --root /path/to/Civ13 --dme civ13.dme --byond BIN \
   `missing-icon` draw a magenta/black placeholder, `missing-state` draws nothing (as in
   game), `invisible-skipped` (`--show-invisible` draws them), and `approximate-var` when a
   render var is an expression the resolver cannot prove. `--areas` also draws area icons.
+
+## Safe map edits
+
+`edit` replaces whole tile stacks at given coordinates. It is a dry run unless `--apply` is
+passed. A patch is JSON:
+
+```json
+{ "base": "<sha256 of the map file>",
+  "bounds": { "x1": 10, "y1": 10, "x2": 20, "y2": 20, "z": 1 },
+  "edits": [ { "x": 12, "y": 14, "z": 1,
+               "expect": ["/turf/floor/dirt", "/area/caribbean/nomads/forest"],
+               "set": ["/obj/structure/table{dir = 4}", "/turf/floor/dirt", "/area/caribbean/nomads/forest"] } ] }
+```
+
+```sh
+node src/cli.js edit --root /path/to/Civ13 --map maps/x.dmm --patch patch.json                  # dry run
+node src/cli.js edit --root /path/to/Civ13 --map maps/x.dmm --patch patch.json --apply --inverse-out undo.json
+```
+
+- Preconditions: the file's sha256 must equal `base`, and each cell's current stack must
+  equal `expect` (whitespace outside quotes is ignored). Otherwise nothing is written.
+- Only the edited grid keys change, plus new dictionary entries for new stacks. New entries
+  take the lowest free key and go in key order, in the file's own DMM or TGM style and line
+  endings; an existing identical stack is reused. Unused entries are kept and reported as
+  `orphanedKeys`. When every key of the current width is taken the edit is refused, since
+  widening keys would rewrite the whole grid.
+- Overrides must be `name = value` pairs. A tile with two areas is refused (DreamMaker
+  rejects it). Cells outside the existing blocks cannot be added.
+- The output is re-parsed: the world size, every old dictionary entry and every untouched
+  cell must be identical, and edited cells must hold the new stacks.
+- `--apply` writes a temp file beside the map, flushes and re-hashes it, re-hashes the
+  original to catch concurrent changes, then renames it over the map. A UTF-8 BOM is kept.
+- The inverse patch (`base` = the new hash) restores every cell. It is not byte-for-byte:
+  the new dictionary entries stay, unused.
 
 ## Native BYOND agreement
 
