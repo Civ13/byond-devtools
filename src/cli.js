@@ -6,8 +6,9 @@ import { parseTypeTree, resolveVar, collectDefines, lintMap } from './typetree.j
 import { overrideAssignments } from './world.js';
 import { decodeDmi } from './dmi.js';
 import { loadRenderer, renderMap } from './render-project.js';
-import { writeFile, lstat } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render> --root DIR --map FILE [--dme FILE]
+import { editMapFile } from './edit-project.js';
+import { writeFile, lstat, readFile } from 'node:fs/promises';
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|edit> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -17,13 +18,15 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   render: --map FILE --dme FILE (--byond BIN | --tree FILE) --out FILE.png [--z N] [--x1 N --y1 N --x2 N --y2 N]
           [--grid N] [--areas] [--show-invisible] [--icon-size N] [--force]
           static preview from authored source + type defaults (not a client screenshot); at most 128x128 tiles
-Read-only authored-source inspection; no map writes, DM execution, or server access. render writes only --out.`;
+  edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json]
+          dry run by default; --apply replaces the map atomically after checking base sha256 and expected stacks
+No DM execution or server access. Only render --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
-    if(['subtypes','areas','show-invisible','force'].includes(key)) opts[key]=true;
+    if(['subtypes','areas','show-invisible','force','apply'].includes(key)) opts[key]=true;
     else { if(i+1>=args.length || args[i+1].startsWith('--')) throw new Error(`Missing value for ${flag}`); opts[key]=args[++i]; }
   }
   return opts;
@@ -36,7 +39,7 @@ function integer(value, name, fallback) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','edit'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -53,6 +56,15 @@ try {
     await writeFile(opts.out,png,{flag:opts.force?'w':'wx'});
     result=({schemaVersion:1,provenance:{...provenance,compilerErrors:renderer.project.compiler?.errorCount??null},data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,holes:r.holes,diagnostics:r.diagnostics,
       notModelled:['New()/Initialize() changes','runtime overlays and smoothing','lighting','animation past frame 1','filters and transforms','colour matrices','see_invisible']}});
+  }
+  else if(command==='edit') {
+    if(!opts.map) throw new Error('--map is required'); if(!opts.patch) throw new Error('--patch is required');
+    const patchBytes=await readFile(opts.patch); if(patchBytes.byteLength>16*1024*1024) throw new Error('Patch byte limit exceeded');
+    const patch=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(patchBytes));
+    if(opts['inverse-out']) { let exists=false; try { exists=!!(await lstat(opts['inverse-out'])); } catch {} if(exists) throw new Error(`${opts['inverse-out']} exists`); }
+    const report=await editMapFile({root:opts.root,map:opts.map,patch,apply:!!opts.apply});
+    if(opts['inverse-out']) await writeFile(opts['inverse-out'],JSON.stringify(report.inverse,null,1)+'\n',{flag:'wx'});
+    result={schemaVersion:1,provenance:{map:report.map,baseSha256:report.baseSha256,truthLayer:'authored-source'},data:{...report,inverse:opts['inverse-out']?{file:opts['inverse-out']}:report.inverse}};
   }
   else if(command==='icon') {
     if(!opts.dmi) throw new Error('--dmi is required');
@@ -99,4 +111,4 @@ try {
     result={schemaVersion:1,provenance,data};
   }
   console.log(boundedJson(result));
-} catch(error) { console.error(JSON.stringify({error:error.name,message:error.message})); process.exitCode=1; }
+} catch(error) { console.error(JSON.stringify({error:error.name,message:error.message,...(error.edit!==undefined?{edit:error.edit}:{}),...(error.actual?{actual:error.actual}:{}),...(error.actualSha256?{actualSha256:error.actualSha256}:{})})); process.exitCode=1; }

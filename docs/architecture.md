@@ -17,9 +17,9 @@ unknown. It must not be relabeled as a semantic project resolver.
 
 ## Data integrity
 
-A dictionary key is compression, not durable object identity. Normal future edits
-must copy-on-write only at selected coordinates. The present API does not expose
-mutation or saving at all. Preserve repeated objects, atom order, overrides and
+A dictionary key is compression, not durable object identity. Edits copy-on-write only
+at selected coordinates (`src/edit.js`): an edited cell gets a reused or new key, and no
+existing dictionary entry is ever changed or removed. Preserve repeated objects, atom order, overrides and
 unresolved paths. Never silently deduplicate, normalize or repair them.
 
 The parser rejects duplicate definitions, mixed key widths, undefined grid keys,
@@ -63,6 +63,9 @@ world size, which can exceed the highest placed row.
    instances, and CI renders of Civ13 crops that fail on any missing icon or state. Not
    compared with a Dream Seeker screenshot; the cross-tile order of equal-layer sprites
    (south over north) is an assumption.
+8. Copy-on-write edits (`src/edit.js`): base-hash and expected-stack preconditions, re-parse
+   verification of every cell, mapmerge2 byte stability and maplint on the whole Civ13
+   corpus, and native load agreement of an edited fixture.
 
 Static authored layout, initialized runtime world and persistent saved world must
 always be separate truth layers. A static preview does not show saved buildings or

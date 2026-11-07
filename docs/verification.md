@@ -67,3 +67,21 @@ On Civ13 master locally, a 64x64 crop of Gaia z2 and of 1943 Berlin rendered in 
 (`su100` track parts that `lint` also flags) and skipped invisible landmarks. Not done:
 comparison with a Dream Seeker screenshot, and the cross-tile order of equal-layer
 sprites, which is assumed to be south over north.
+
+## Safe map edits (phase 6, 2026-11-07)
+
+`scripts/edit-corpus.js` makes three sample edits on every Civ13 map, in memory and in a
+temp folder only: one cell takes another cell's stack, one gets a new var-edited obj, and
+one gets a replaced obj. On Civ13 master all 279 maps (718 edits, 558 new keys) pass:
+
+- Civ13's mapmerge2 loads each edited map and writes it back byte for byte. 91 maps
+  are rewritten by mapmerge2 even unedited; for those the check runs on mapmerge2's own
+  output, edited, and all 91 are stable.
+- `scripts/maplint.py` reports no errors that the original map did not already have.
+- The inverse patch restores every cell.
+
+`test/edit.test.js` covers exact DMM, TGM and CRLF output, key reuse and ordering, stale and
+unsafe patches, a full key space, the atomic file apply (BOM, no temp file left, stale base)
+and the CLI. With `BYOND_BIN` set, an edited fixture map is loaded in DreamDaemon 516.1688
+and agrees cell by cell with the parser, including the new overrides. The corpus check runs
+in CI on Linux and Windows. Not run: an edit to a map followed by a full-game compile.
