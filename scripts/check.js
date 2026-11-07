@@ -3,13 +3,13 @@
 import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-const roots = ['src', 'scripts', 'test'];
+const roots = ['src', 'scripts', 'test', 'vscode'];
 const files = [];
 function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { if (entry.name !== 'node_modules') walk(full); }
-    else if (/\.(m?js)$/.test(entry.name)) files.push(full);
+    else if (/\.[cm]?js$/.test(entry.name)) files.push(full);
   }
 }
 for (const root of roots) walk(root);

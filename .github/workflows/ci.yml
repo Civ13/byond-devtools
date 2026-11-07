@@ -33,6 +33,40 @@ jobs:
       - run: npm run check
       - run: npm test
 
+  vscode:
+    name: VS Code ${{ matrix.vscode }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        vscode: [stable, insiders]
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Integration tests in a real VS Code
+        shell: bash
+        env:
+          VSCODE_VERSION: ${{ matrix.vscode }}
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npm test; else npm test; fi
+      - name: Package the .vsix
+        if: matrix.os == 'ubuntu-latest' && matrix.vscode == 'stable'
+        run: npm run package
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.vscode == 'stable'
+        with:
+          name: byond-map-preview-vsix
+          path: vscode/byond-map-preview.vsix
+          retention-days: 30
+
   corpus:
     name: Civ13 map corpus (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

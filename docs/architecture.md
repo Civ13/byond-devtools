@@ -66,6 +66,8 @@ world size, which can exceed the highest placed row.
 8. In-game render (`src/ingame.js`, `src/ingame-render.js`): truth layer
    `native-initialized-world`, a recorded fixture dump with hand-checked composition, an
    exact re-record in CI, and a compile check of the Civ13 probe.
+10. VS Code preview (`vscode/`): integration suite in real VS Code Stable and Insiders on
+   Linux and Windows; read-only (no edit or save path).
 9. Copy-on-write edits (`src/edit.js`): base-hash and expected-stack preconditions, re-parse
    verification of every cell, mapmerge2 byte stability and maplint on the whole Civ13
    corpus, and native load agreement of an edited fixture.

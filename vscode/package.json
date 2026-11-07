@@ -1,0 +1,42 @@
+{
+  "name": "byond-devtools-vscode",
+  "displayName": "BYOND Map Preview",
+  "description": "Read-only preview of BYOND .dmm maps: rendered tiles from the native type tree, cell inspection and diagnostics.",
+  "version": "0.1.0",
+  "publisher": "civ13",
+  "license": "AGPL-3.0-only",
+  "repository": { "type": "git", "url": "https://github.com/Civ13/byond-devtools" },
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Visualization", "Other"],
+  "main": "./extension.cjs",
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      { "viewType": "byondDevtools.mapPreview", "displayName": "BYOND Map Preview", "selector": [{ "filenamePattern": "*.dmm" }], "priority": "option" }
+    ],
+    "commands": [
+      { "command": "byondDevtools.openPreview", "title": "Open BYOND Map Preview", "category": "BYOND" }
+    ],
+    "menus": {
+      "explorer/context": [{ "command": "byondDevtools.openPreview", "when": "resourceExtname == .dmm" }],
+      "editor/title": [{ "command": "byondDevtools.openPreview", "when": "resourceExtname == .dmm" }]
+    },
+    "configuration": {
+      "title": "BYOND Map Preview",
+      "properties": {
+        "byondDevtools.byondBin": { "type": "string", "default": "", "description": "BYOND bin folder (with DreamMaker/dm.exe). Used to read the project's type tree with DreamMaker -o.", "scope": "machine-overridable" },
+        "byondDevtools.typeTree": { "type": "string", "default": "", "description": "A saved type tree (DreamMaker -o output) to use instead of running DreamMaker. Relative to the workspace folder." },
+        "byondDevtools.dme": { "type": "string", "default": "", "description": "The project .dme, relative to the workspace folder. Default: the only .dme at the folder root." }
+      }
+    }
+  },
+  "scripts": {
+    "bundle": "node scripts/bundle.mjs",
+    "test": "node integration/run.mjs",
+    "package": "npm run bundle && vsce package --no-dependencies --out byond-map-preview.vsix"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.0"
+  }
+}
