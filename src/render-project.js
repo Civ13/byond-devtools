@@ -24,7 +24,7 @@ export async function loadRenderer({ root, dme, binDir, treeFile }) {
     let found = null;
     // Resource paths resolve against the .dme folder (FILE_DIR); a project-root path is the fallback.
     for (const candidate of [...new Set([path.posix.join(base, file), file])]) {
-      try { const input = await readProjectBytes(root, candidate); found = { dmi: decodeDmi(input.data), file: candidate, sha256: input.sha256 }; break; }
+      try { const input = await readProjectBytes(root, candidate); found = { dmi: decodeDmi(input.data, { plainPng: true }), file: candidate, sha256: input.sha256 }; break; }
       catch { /* not here, unreadable or not a DMI */ }
     }
     icons.set(file, found);

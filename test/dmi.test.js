@@ -75,3 +75,12 @@ test('live GetPixel matches the recording (set BYOND_BIN to run)', { skip: bin ?
   const r = await recordIconPixels({ files: { [`${DIR}/rgba16.dmi`]: fixtureQueries(), [`${DIR}/palette2.dmi`]: fixtureQueries() }, binDir: bin });
   assert.deepEqual(r.results[`${DIR}/rgba16.dmi`], native.results['rgba16.dmi']); assert.deepEqual(r.results[`${DIR}/palette2.dmi`], native.results['palette2.dmi']);
 });
+test('a plain PNG icon (icon = \'x.png\') decodes as one "" state only when asked', () => {
+  const rgba = new Uint8Array(5 * 3 * 4).fill(200);
+  const png = encodePng({ width: 5, height: 3, rgba });
+  assert.throws(() => decodeDmi(png), DmiError);
+  const icon = decodeDmi(png, { plainPng: true });
+  assert.equal(icon.plain, true); assert.equal(icon.width, 5); assert.equal(icon.height, 3);
+  const state = icon.findState('');
+  assert.equal(state.dirs, 1); assert.deepEqual([...icon.frame(state, 4, 1, { display: true })], [...rgba]);
+});

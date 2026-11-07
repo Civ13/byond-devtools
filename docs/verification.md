@@ -98,8 +98,15 @@ colour matrix and invisibility. With `BYOND_BIN` set it re-records the dump and 
 exact match (CI native job). The Civ13 probe (`civ13` profile) compiles with 0 errors
 against Civ13 master in CI; it is not booted there.
 
-Not verified: a Civ13 boot and render (needs a separate go-ahead to run game code), and any
-comparison with Dream Seeker. The compositor's blend and plane-master semantics follow
+Civ13 boot (2026-11-07, with Val's go-ahead, in a temp copy with `-safe`, 127.0.0.1 and no
+saves): `ingame --profile civ13` on Gaia z2 (400,160)-(431,191) at Evening reached "ready" after
+193 s with 0 runtime errors and recorded 3940 sprites. That run found that Civ13's lighting
+overlay icon is a plain PNG (`icons/effects/icon.png`), which the decoder rejected, so the
+light-mask plane went black; `decodeDmi(..., { plainPng: true })` now reads such a file as one
+"" state, and both renderers use it. The re-rendered dump has no diagnostics and shows the
+evening light. The probe compile in CI needs `sound` and `UI` in the sparse checkout.
+
+Not verified: any comparison with Dream Seeker. The compositor's blend and plane-master semantics follow
 BYOND's documented behaviour and have not been checked against a client screenshot.
 
 ## VS Code preview (phase 7, 2026-11-07)
