@@ -1,0 +1,65 @@
+{
+ "byond": "516.1688",
+ "types": {
+  "/turf/floor": {
+   "icon": "icons/floor.dmi",
+   "icon_state": "floor",
+   "layer": 2.1,
+   "pixel_x": 0,
+   "dir": 2,
+   "name": "floor",
+   "alpha": 255,
+   "density": 0,
+   "amount": null,
+   "desc": null
+  },
+  "/turf/floor/grass": {
+   "icon": "icons/floor.dmi",
+   "icon_state": "grass",
+   "layer": 2.1,
+   "pixel_x": -4,
+   "dir": 2,
+   "name": "grass",
+   "alpha": 255,
+   "density": 0,
+   "amount": null,
+   "desc": null
+  },
+  "/obj/item": {
+   "icon": null,
+   "icon_state": null,
+   "layer": 3,
+   "pixel_x": 0,
+   "dir": 5,
+   "name": "item",
+   "alpha": 127,
+   "density": 0,
+   "amount": 1,
+   "desc": null
+  },
+  "/obj/thing": {
+   "icon": null,
+   "icon_state": null,
+   "layer": 3,
+   "pixel_x": 0,
+   "dir": 5,
+   "name": "item",
+   "alpha": 127,
+   "density": 0,
+   "amount": 3,
+   "desc": "a \"quoted\" thing"
+  },
+  "/mob/dummy": {
+   "icon": null,
+   "icon_state": null,
+   "layer": 4,
+   "pixel_x": 0,
+   "dir": 2,
+   "name": "dummy",
+   "alpha": 255,
+   "density": 1,
+   "amount": null,
+   "desc": null
+  }
+ }
+}

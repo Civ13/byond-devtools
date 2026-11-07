@@ -1,0 +1,4 @@
+// Fixture project for the native type tree tests. Never compiled into a game.
+#define BASE_LAYER 2
+#define HALF (1 / 2)
+#include "code/types.dm"

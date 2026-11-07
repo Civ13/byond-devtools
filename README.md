@@ -65,15 +65,36 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 
 ## Roadmap
 
-1. Strict read-only inspection, provenance and source-preserving observation fixtures (current).
-2. Project/type resolution through an independently tested DM language-service
-   adapter; DMI decoding and coordinate-linked static rendering.
+1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
+2. Native type tree (done); DMI decoding and coordinate-linked static rendering.
 3. Read-only VS Code custom editor, installed/tested separately in Stable/Insiders.
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    semantic/visual diff, inverse patch and verified unchanged regions.
 5. Prefabs, generator-aware tools, spatial contracts and local agent API/MCP.
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
+
+## Native type tree and lint
+
+`types` and `lint` read the project's real compiled type tree from your own installed
+DreamMaker (`-o`). The compiler runs on a one-line probe `.dme` in a temporary directory
+that includes the project's `.dme`, so its `.rsc` lands there, not in your checkout.
+A saved tree (`DreamMaker -o civ13.dme > tree.xml`) can be passed with `--tree`.
+
+```sh
+node src/cli.js types --root /path/to/Civ13 --dme civ13.dme --byond /path/to/byond/bin
+node src/cli.js types --root /path/to/Civ13 --dme civ13.dme --byond BIN --type /obj/structure/closet
+node src/cli.js lint  --root /path/to/Civ13 --dme civ13.dme --byond BIN --map maps/1943/berlin.dmm
+```
+
+DreamMaker's printed values are not evaluated (operators are dropped: `2 + 0.1` prints
+`20.1`, `4|1` prints `41`). Each value is therefore resolved from its declaring source
+line: a plain literal, a `#define` for one, or `+ - * /` arithmetic over those in 32-bit
+floats. Anything else (`NORTH|EAST`, `\improper` text, proc calls) is reported as
+unresolved with its source text. Fixture values are checked against instances created
+in DreamDaemon. On Civ13 every `icon`, `icon_state`, `layer` and `plane` of all 11,289
+atom types resolves. `lint` exits 3 when it finds unknown types or overrides of undeclared
+vars. It complements Civ13's `scripts/maplint.py`, which checks tile structure.
 
 ## Native BYOND agreement
 

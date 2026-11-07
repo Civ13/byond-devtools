@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<dm>
+
+	<turf file="code/types.dm:1">turf
+		<turf file="code/types.dm:1">floor
+			<var file="code/types.dm:2">icon
+				<val file="code/types.dm:2">'icons/floor.dmi'</val>
+			</var>
+			<var file="code/types.dm:3">icon_state
+				<val file="code/types.dm:3">"floor"</val>
+			</var>
+			<var file="code/types.dm:4">layer
+				<val file="code/types.dm:4">20.1</val>
+			</var>
+			<turf file="code/types.dm:5">grass
+				<var file="code/types.dm:6">icon_state
+					<val file="code/types.dm:6">"grass"</val>
+				</var>
+				<var file="code/types.dm:7">pixel_x
+					<val file="code/types.dm:7">-4</val>
+				</var>
+			</turf>
+		</turf>
+	</turf>
+	<obj file="code/types.dm:8">obj
+		<obj file="code/types.dm:8">item
+			<var file="code/types.dm:9">amount
+				<val file="code/types.dm:9">1</val>
+			</var>
+			<var file="code/types.dm:10">layer
+				<val file="code/types.dm:10">3</val>
+			</var>
+			<var file="code/types.dm:11">dir
+				<val file="code/types.dm:11">14</val>
+			</var>
+			<var file="code/types.dm:12">name
+				<val file="code/types.dm:12">"\improper item"</val>
+			</var>
+			<var file="code/types.dm:13">alpha
+				<val file="code/types.dm:13">25512</val>
+			</var>
+		</obj>
+		<obj file="code/types.dm:14">thing
+			<var file="code/types.dm:15">parent_type
+				<val file="code/types.dm:15">/obj/item</val>
+			</var>
+			<var file="code/types.dm:16">amount
+				<val file="code/types.dm:16">3</val>
+			</var>
+			<var file="code/types.dm:17">desc
+				<val file="code/types.dm:17">"a \"quoted\" thing"</val>
+			</var>
+		</obj>
+	</obj>
+	<mob file="code/types.dm:18">mob
+		<mob file="code/types.dm:18">dummy
+			<var file="code/types.dm:19">density
+				<val file="code/types.dm:19">1</val>
+			</var>
+		</mob>
+	</mob>
+</dm>
