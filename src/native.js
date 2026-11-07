@@ -88,13 +88,52 @@ export async function recordNative(map, mapText, { binDir, resourceRoot, timeout
     await writeFile(path.join(dir, 'map.dmm'), mapText);
     await writeFile(path.join(dir, 'harness.dme'), harnessSource(map, 'map.dmm', { resourceRoot }));
     const env = { ...process.env, LD_LIBRARY_PATH: [binDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter) };
-    const compile = spawnSync(tool(binDir, 'DreamMaker'), ['-clean', '-max_errors', '0', 'harness.dme'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs });
+    const compile = spawnSync(tool(binDir, 'DreamMaker'), ['-clean', '-max_errors', '0', 'harness.dme'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
     const compiler = `${compile.stdout || ''}${compile.stderr || ''}${compile.error ? String(compile.error) : ''}`;
     if (compile.status !== 0 || !/ 0 errors/.test(compiler)) return { status: / \d+ errors?/.test(compiler) ? 'compile-failed' : 'compiler-crashed', compiler };
-    const run = spawnSync(tool(binDir, 'DreamDaemon'), ['harness.dmb', '-safe', '-invisible', '-quiet'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs });
+    const run = spawnSync(tool(binDir, 'DreamDaemon'), ['harness.dmb', '-safe', '-invisible', '-quiet'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
     const runtime = `${run.stdout || ''}${run.stderr || ''}${run.error ? String(run.error) : ''}`;
     let text;
     try { text = await readFile(path.join(dir, 'devtools_dump.json'), 'utf8'); } catch { return { status: 'run-failed', compiler, runtime }; }
     return { status: 'ok', dump: JSON.parse(text), compiler, runtime, dir: keep ? dir : undefined };
   } finally { if (!keep) await rm(dir, { recursive: true, force: true }); }
+}
+
+/**
+ * Instantiate `types` from a fixture project natively and read `vars` from each instance.
+ * Only for fixture projects: it runs their New() procs. Returns {byond, types:{path:{var:value}}}.
+ */
+export async function recordInstanceVars({ root, dme, types, vars, binDir, timeoutMs = 120000 }) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'byond-values-'));
+  try {
+    const posix = p => p.split(path.sep).join('/');
+    await writeFile(path.join(dir, 'probe.dme'), `#define FILE_DIR ${dmString(posix(path.resolve(root)))}
+#include ${dmString(posix(path.resolve(root, dme)))}
+/world/maxx = 1
+/world/maxy = 1
+/world/maxz = 1
+/world/New()
+	var/list/out = list()
+	for(var/T in list(${types.join(', ')}))
+		var/datum/D
+		try
+			D = ispath(T, /turf) ? new T(locate(1, 1, 1)) : new T
+		catch(var/exception/e)
+			out["[T]"] = "error: [e]"
+			continue
+		var/list/row = list()
+		for(var/v in list(${vars.map(dmString).join(', ')}))
+			row[v] = (v in D.vars) ? (isicon(D.vars[v]) || isfile(D.vars[v]) ? "[D.vars[v]]" : D.vars[v]) : null
+		out["[T]"] = row
+	text2file(json_encode(list("byond" = "[world.byond_version].[world.byond_build]", "types" = out)), "values.json")
+	shutdown()
+/world/Error(exception/e)
+	text2file("runtime: [e]", "errors.txt")
+`);
+    const env = { ...process.env, LD_LIBRARY_PATH: [binDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter) };
+    const c = spawnSync(tool(binDir, 'DreamMaker'), ['-clean', 'probe.dme'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
+    if (!/ 0 errors/.test(c.stdout || '')) throw new Error(`fixture compile failed: ${c.stdout}${c.stderr}`);
+    spawnSync(tool(binDir, 'DreamDaemon'), ['probe.dmb', '-safe', '-invisible', '-quiet'], { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
+    return JSON.parse(await readFile(path.join(dir, 'values.json'), 'utf8'));
+  } finally { await rm(dir, { recursive: true, force: true }); }
 }

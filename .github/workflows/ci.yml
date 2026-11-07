@@ -66,6 +66,59 @@ jobs:
           path: corpus-report.json
           retention-days: 7
 
+  civ13-types:
+    name: Civ13 native type tree and Gaia lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BYOND_URL: https://github.com/Civ13/Civ13/releases/download/byond-toolchain-cache-516.1688-linux-16278f318cde/516.1688_byond_linux.zip
+      BYOND_SHA256: 16278f318cdeb4b77c57868dd7135032fde717ea6226269d22b2a1a50968e7f9
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: Civ13/Civ13
+          path: civ13
+          sparse-checkout: |
+            code
+            maps
+            icons
+            interface
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install pinned BYOND (sha256-checked)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          pkgs="unzip make libc6-i386 libstdc++6:i386 libgcc-s1:i386 lib32z1"
+          sudo apt-get install -y -qq --no-install-recommends $pkgs libcurl4:i386 \
+            || sudo apt-get install -y -qq --no-install-recommends $pkgs libcurl4t64:i386
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/byond.zip" "$BYOND_URL"
+          echo "$BYOND_SHA256  $RUNNER_TEMP/byond.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/byond.zip" -d "$RUNNER_TEMP"
+          (cd "$RUNNER_TEMP/byond" && make here >/dev/null)
+          echo "BYOND_BIN=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
+      - name: Type tree summary
+        run: |
+          node src/cli.js types --root civ13 --dme civ13.dme --byond "$BYOND_BIN" > civ13-types.json
+          node -e "const r=require('./civ13-types.json');console.log(r.data.types+' types, '+r.data.atomTypes+' atom types');console.log(JSON.stringify(r.data.renderVarResolution))"
+      - name: Lint Gaia against the native tree
+        shell: bash
+        run: |
+          status=0
+          node src/cli.js lint --root civ13 --map maps/nomads/nomads_gaia.dmm --dme civ13.dme --byond "$BYOND_BIN" > civ13-gaia-lint.json || status=$?
+          node -e "const r=require('./civ13-gaia-lint.json');console.log(JSON.stringify(r.data.counts));for(const p of r.data.problems.slice(0,20))console.log('::error::'+JSON.stringify(p))"
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: civ13-types
+          path: civ13-*.json
+          retention-days: 7
+
   native:
     name: native BYOND agreement (516.1688, Linux)
     runs-on: ubuntu-latest
@@ -102,8 +155,12 @@ jobs:
           echo "BYOND_BIN=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
           LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
-      - name: Live fixture agreement
-        run: node --test test/native.test.js
+      - name: Live fixture agreement (map load, type tree, instance values)
+        run: node --test test/native.test.js test/typetree.test.js
+      - name: Re-record the type tree fixture and diff
+        run: |
+          node scripts/record-types-fixture.js --byond "$BYOND_BIN"
+          git diff --exit-code -- fixtures/types
       - name: Re-record fixtures and diff against the checked-in recordings
         run: |
           node scripts/native.js check --byond "$BYOND_BIN" --record fixtures/native fixtures/native/*.dmm > native-fixtures.json
