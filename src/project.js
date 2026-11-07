@@ -1,15 +1,20 @@
 import { realpath, stat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-export async function readProjectFile(root, relative, maxBytes = 64 * 1024 * 1024) {
+/** Project-relative, realpath-contained binary read with SHA-256 provenance. */
+export async function readProjectBytes(root, relative, maxBytes = 64 * 1024 * 1024) {
   if (typeof relative !== 'string' || !relative || path.isAbsolute(relative)) throw new Error('File must be project-relative');
   const projectRoot = await realpath(root), file = await realpath(path.resolve(projectRoot, relative));
   const relation = path.relative(projectRoot, file);
   if (relation === '..' || relation.startsWith('..' + path.sep) || path.isAbsolute(relation)) throw new Error('File escapes project root');
   const info = await stat(file); if (!info.isFile() || info.size > maxBytes) throw new Error('Not a regular file or byte limit exceeded');
   const bytes = await readFile(file); if (bytes.byteLength > maxBytes) throw new Error('Byte limit exceeded');
-  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  return { text, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex'), projectRoot, relative: relation };
+  return { data: bytes, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex'), projectRoot, relative: relation };
+}
+/** Same as readProjectBytes, decoded as strict UTF-8. */
+export async function readProjectFile(root, relative, maxBytes = 64 * 1024 * 1024) {
+  const { data, ...rest } = await readProjectBytes(root, relative, maxBytes);
+  return { text: new TextDecoder('utf-8', { fatal: true }).decode(data), ...rest };
 }
 /** Lexical include inventory ONLY. Does not preprocess DM or resolve active includes. */
 export function inspectDme(text) {
