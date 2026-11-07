@@ -1,0 +1,6 @@
+integration/**
+scripts/**
+node_modules/**
+.vscode-test/**
+*.vsix
+.gitignore

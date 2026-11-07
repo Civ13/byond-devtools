@@ -101,3 +101,14 @@ against Civ13 master in CI; it is not booted there.
 Not verified: a Civ13 boot and render (needs a separate go-ahead to run game code), and any
 comparison with Dream Seeker. The compositor's blend and plane-master semantics follow
 BYOND's documented behaviour and have not been checked against a client screenshot.
+
+## VS Code preview (phase 7, 2026-11-07)
+
+`test/vscode-session.test.js` checks the viewer's session logic with node:test: summary,
+inspection, the golden render pixel for pixel, clipping, and the messages shown when no
+type tree is configured. `vscode/integration` runs inside a downloaded VS Code: it opens the
+fixture map with the custom editor, checks the missing-settings message, renders the
+golden image through the extension, inspects a cell, and checks the map is unchanged and
+no document is dirty. CI runs it on Stable and Insiders, Linux and Windows. VS Code
+downloads are blocked in the cloud session, so that suite ran only in CI. The webview's
+look was not checked by a person.

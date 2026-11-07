@@ -67,7 +67,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
-3. Read-only VS Code custom editor, installed/tested separately in Stable/Insiders.
+3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions (done; visual diff to follow).
 5. Prefabs, generator-aware tools, spatial contracts and local agent API/MCP.
@@ -167,6 +167,12 @@ node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-
 - Not modelled, counted in the report: filters (including the client's ambient-occlusion
   shadow), maptext, `vis_contents`, animation past frame 1, `KEEP_TOGETHER` groups,
   `client.color` and screen objects.
+
+## VS Code preview
+
+`vscode/` is a read-only custom editor for `.dmm` files: rendered views with the static
+renderer, tile inspection and diagnostics. CI runs its integration suite inside real VS Code
+Stable and Insiders on Linux and Windows and uploads a `.vsix`. See [vscode/README.md](vscode/README.md).
 
 ## Safe map edits
 
