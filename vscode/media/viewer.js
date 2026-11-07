@@ -11,6 +11,17 @@
     vscode.setState({ x, y, z, size });
     send({ type: 'render', view: { x1: x, y1: y, x2: x + size - 1, y2: y + size - 1, z } });
   }
+  // The PNG goes in as a blob: URL (no data: URL length limits), and the extension hears back
+  // whether it actually displayed, so a blank view always comes with a reason.
+  let objectUrl = null;
+  function show(base64) {
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+    $('image').src = objectUrl;
+  }
+  $('image').addEventListener('load', e => send({ type: 'displayed', width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight }));
+  $('image').addEventListener('error', () => { $('status').textContent = 'The rendered image could not be displayed in this webview.'; send({ type: 'displayed', error: 'image failed to load' }); });
   window.addEventListener('message', e => {
     const m = e.data;
     if (m.type === 'summary') {
@@ -23,7 +34,7 @@
     } else if (m.type === 'image') {
       region = m.region;
       if (m.error) { $('status').textContent = m.error; $('image').removeAttribute('src'); return; }
-      iconSize = m.iconSize; $('image').src = `data:image/png;base64,${m.png}`;
+      iconSize = m.iconSize; show(m.png);
       $('status').textContent = `(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} - ${m.truthLayer}, not a client screenshot`;
       $('report').textContent = (m.diagnostics.length ? m.diagnostics.map(d => `${d.code} ${d.detail} x${d.count}`).join('\n') : 'Everything drawn exactly.');
     } else if (m.type === 'cell') {

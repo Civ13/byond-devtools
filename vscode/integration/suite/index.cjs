@@ -43,6 +43,9 @@ async function run() {
     const got = decodePng(Buffer.from(r.png, 'base64')), want = decodePng(fs.readFileSync(path.join(repo, 'fixtures', 'render', 'golden.png')));
     assert.equal(got.width, 24); assert.deepEqual(Buffer.from(got.rgba), Buffer.from(want.rgba));
     assert.equal(r.diagnostics.length, 4);
+    // The webview renders on open (default view clipped to the 3x3 map) and must actually show it.
+    const shown = await wait(() => api.sessions().find(x => x.uri === vscode.Uri.file(mapFile).toString() && x.displayed)?.displayed);
+    assert.deepEqual(shown, { width: 24, height: 24, error: undefined });
     await assert.rejects(s.render({ x1: 1, y1: 1, x2: 100, y2: 100, z: 2 }), /outside the map/);
   });
   await test('the preview is read-only: the map is never modified and nothing is dirty', async () => {
