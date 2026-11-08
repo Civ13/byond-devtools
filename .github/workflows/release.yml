@@ -14,11 +14,14 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # A fixed environment gives the Entra federated credential one subject for every tag:
+    # repo:Civ13/byond-devtools:environment:release
+    environment: release
     timeout-minutes: 20
     env:
       # Publishing is optional: each step runs only when its variable or secret is set.
       # The Marketplace prefers Microsoft Entra sign-in (variables AZURE_CLIENT_ID and
-      # AZURE_TENANT_ID, a federated credential for this repository's tags); the
+      # AZURE_TENANT_ID, a federated credential for the release environment); the
       # VSCE_PAT secret is the fallback until then (global PATs end 2026-12-01).
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
@@ -54,6 +57,10 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
+      - name: Marketplace member ID for this sign-in
+        if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != ''
+        # Add this ID as a Contributor on the civ13 publisher (it is not a secret).
+        run: az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me --resource 499b84ac-1321-427f-aa17-267ca6975798 --query id -o tsv
       - name: Publish to the Visual Studio Marketplace (Entra)
         if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != ''
         working-directory: vscode

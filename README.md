@@ -218,7 +218,7 @@ publishes to the Marketplace and Open VSX when they are set up:
 
 - Marketplace, preferred: Microsoft Entra sign-in with no stored token. Set repository
   variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` for an app registration that has a
-  federated credential for this repository's tags and is a Contributor on the `civ13`
+  federated credential for this repository's `release` environment and is a Contributor on the `civ13`
   publisher. The `VSCE_PAT` secret is used only when those variables are missing; global
   personal access tokens stop working on 2026-12-01.
 - Open VSX: secret `OVSX_PAT` (an access token from open-vsx.org). The first release
