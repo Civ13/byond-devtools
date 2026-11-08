@@ -65,3 +65,15 @@ test('the CLI resizes with a dry run and --apply', async t => {
   assert.equal(wet.status, 0, wet.stderr);
   assert.equal(parseDmm(await readFile(path.join(root, 'm.dmm'), 'utf8')).world.maxX, 4);
 });
+test('a map with every key taken is re-keyed one character wider before the fill is added', () => {
+  const keys = [...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+  const full = keys.map((k, i) => `"${k}" = (/turf/t${i},/area/a)\n`).join('') + `\n(1,1,1) = {"\n${keys.join('')}\n"}\n`;
+  const r = planResize(full, { maxX: 53, maxY: 1, maxZ: 1, fill: FILL });
+  assert.deepEqual(r.widenedKeys, { from: 1, to: 2 });
+  assert.equal(r.fillKey, 'ba'); assert.deepEqual(r.newKeys, ['ba']);
+  const after = parseDmm(r.text);
+  assert.equal(after.keyWidth, 2); assert.equal(after.definitions.length, 53);
+  assert.equal(key(r.text, 1, 1), 'aa'); assert.equal(key(r.text, 52, 1), 'aZ'); assert.equal(key(r.text, 53, 1), 'ba');
+  assert.equal(after.inspectCell(52, 1, 1).atoms[0].raw, '/turf/t51');
+  assert.equal(r.keptCells, 52); assert.equal(r.filledCells, 1);
+});

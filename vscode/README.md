@@ -68,5 +68,6 @@ Development: `npm ci`, then `npm test` runs the integration suite in a downloade
 (`VSCODE_VERSION=insiders npm test` for Insiders; Linux needs `xvfb-run -a`).
 `npm run package` bundles the core and writes `byond-map-preview.vsix`; install it with
 "Extensions: Install from VSIX...". Pushing a `vX.Y.Z` tag publishes a GitHub release with
-the .vsix, and also publishes to the Visual Studio Marketplace (secret `VSCE_PAT`) and Open VSX
-(secret `OVSX_PAT`) when those repository secrets are set.
+the .vsix, and also publishes to the Visual Studio Marketplace (Microsoft Entra sign-in through
+variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`, or the `VSCE_PAT` secret) and Open VSX
+(secret `OVSX_PAT`) when those are set. See the main README's release notes.
