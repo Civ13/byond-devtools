@@ -368,7 +368,11 @@ Or in a project's `.mcp.json`:
   `sheet: true` every dir (rows) by frame (columns). `image_compare` compares a reference PNG
   (project-relative, or a `file: true` output) with another PNG or a fresh static render and
   returns the differing pixel count, bounds and max/mean delta over a `threshold`, with a
-  reference | candidate | heatmap image. Animated output (APNG) is not produced.
+  reference | candidate | heatmap image.
+- Animated PNGs (APNG; viewers without APNG show frame 1): `icon_render` with `animate: true`
+  plays one state in one dir with its own delays, `rewind` and `loop` count; `map_render` with
+  `animate: {frames: 2-60, interval_ms}` renders the region at each interval, every animated
+  state starting together and stepping by its own delays. `ingame_render` stays a single frame.
 - `ingame_render` is the CLI's `ingame` render over MCP: it compiles and boots the game headless
   in a temp folder (`-safe`, 127.0.0.1, no saves) and composes the initialized world. It runs game
   code, so it is refused unless the server was started with `--allow-game`.

@@ -98,3 +98,30 @@ export function pixelText(rgba, offset) {
   const hex = v => v.toString(16).padStart(2, '0');
   return '#' + hex(rgba[offset]) + hex(rgba[offset + 1]) + hex(rgba[offset + 2]) + (a === 255 ? '' : hex(a));
 }
+
+/**
+ * BYOND animation timing for one state: the 1-based frame shown `timeDs` deciseconds after the
+ * animation started. delay lists ticks per frame (missing entries are 1); rewind plays the frames
+ * back (n-1 .. 2) after the forward run; loop > 0 stops on the last frame after that many runs.
+ */
+export function frameAt(state, timeDs) {
+  if (state.frames <= 1) return 1;
+  const order = [];
+  for (let f = 1; f <= state.frames; f++) order.push(f);
+  if (state.rewind) for (let f = state.frames - 1; f >= 2; f--) order.push(f);
+  const delay = f => { const d = state.delay?.[f - 1]; return Number.isFinite(d) && d > 0 ? d : 1; };
+  const total = order.reduce((s, f) => s + delay(f), 0);
+  let t = Math.max(0, timeDs);
+  if (state.loop > 0 && t >= total * state.loop) return order.at(-1);
+  t %= total;
+  for (const f of order) { t -= delay(f); if (t < 0) return f; }
+  return order.at(-1);
+}
+
+/** The frame sequence of one run of a state: [{frame, delayDs}], rewind included. */
+export function frameSequence(state) {
+  const order = [];
+  for (let f = 1; f <= state.frames; f++) order.push(f);
+  if (state.rewind) for (let f = state.frames - 1; f >= 2; f--) order.push(f);
+  return order.map(f => { const d = state.delay?.[f - 1]; return { frame: f, delayDs: Number.isFinite(d) && d > 0 ? d : 1 }; });
+}
