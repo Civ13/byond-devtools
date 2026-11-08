@@ -1,10 +1,24 @@
 # BYOND Devtools
 
-An early development toolkit for trustworthy BYOND map observation and, later,
-editing from a shared human/agent model. It is a **DMM inspection, preview and safe-edit
-core with a CLI**, not a finished visual editor or IDE.
+A dependency-free toolkit for trustworthy BYOND map work, shared by people and agents:
+inspection, a native type tree, static and in-game rendering, safe copy-on-write edits,
+diffs, prefabs, generator-aware inspection, spatial contracts, an agent API/MCP server and
+native compile/playtest capture, plus a read-only VS Code map preview. Every layer says what
+it was checked against (see [verification](docs/verification.md)). It is not a visual map
+editor.
 
-## Working now
+## Install
+
+- **VS Code:** install [BYOND Map Preview](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode)
+  from the Marketplace (search "BYOND Map Preview" in the Extensions panel), then set
+  `byondDevtools.byondBin` to your BYOND `bin` folder. The `.vsix` is also attached to each
+  [GitHub release](https://github.com/Civ13/byond-devtools/releases).
+- **CLI:** clone this repository and run `node src/cli.js` with Node.js 22+. There is
+  nothing to install.
+
+Current release: [v0.1.0](https://github.com/Civ13/byond-devtools/releases/tag/v0.1.0).
+
+## Core parser
 
 - Dependency-free ECMAScript modules on Node.js 22+.
 - Bounded DMM/TGM syntax parsing: dictionary, ordered atom stacks, opaque variable
@@ -47,7 +61,7 @@ exit status 1. Only `edit --apply` writes a map (see below).
 Passing the parser is not full-game compilation or playability validation. Overrides
 remain raw DM expressions, never evaluated. No inheritance, active conditional
 includes, lighting, smoothing, runtime overlays, pathfinding, runtime state or
-persistent saves are resolved; the static preview shows authored source plus type defaults. The `--dme` option binds the file hash but does not
+persistent saves are resolved by the parser; the static preview shows authored source plus type defaults, and the `ingame` render (below) is the view after runtime changes and lighting. The `--dme` option binds the file hash but does not
 resolve its type environment. Unknown paths are retained, not silently removed.
 
 Sparse/offset blocks are placed the way BYOND 516 places them (header y counts down
@@ -63,7 +77,9 @@ unsupported constructs instead of repairing them. Comments inside opaque overrid
 expressions are balanced but not interpreted; comments between an atom's prefix
 and type path are currently rejected. See [architecture](docs/architecture.md).
 
-## Roadmap
+## Roadmap (complete)
+
+All phases are merged and released as v0.1.0:
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
@@ -172,7 +188,13 @@ node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-
 
 `vscode/` is a read-only custom editor for `.dmm` files: rendered views with the static
 renderer, tile inspection and diagnostics. CI runs its integration suite inside real VS Code
-Stable and Insiders on Linux and Windows and uploads a `.vsix`. See [vscode/README.md](vscode/README.md). Releases: push a tag `vX.Y.Z` matching `vscode/package.json` and the Release workflow publishes a GitHub release with the `.vsix` attached.
+Stable and Insiders on Linux and Windows. It is published on the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode)
+as `civ13.byond-devtools-vscode`. See [vscode/README.md](vscode/README.md).
+
+Releasing: bump `vscode/package.json`'s version, merge, then push a matching tag `vX.Y.Z`.
+The Release workflow runs the tests, publishes a GitHub release with the `.vsix` and, with
+the `VSCE_PAT` secret set, publishes to the Marketplace.
 
 ## Safe map edits
 

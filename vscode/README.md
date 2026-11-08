@@ -1,6 +1,8 @@
 # BYOND Map Preview (VS Code)
 
-A read-only custom editor for BYOND `.dmm` maps, built on byond-devtools.
+A read-only custom editor for BYOND `.dmm` maps, built on
+[byond-devtools](https://github.com/Civ13/byond-devtools). Install it from the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode).
 
 - Open a map, then run **BYOND: Open BYOND Map Preview** (or right-click the file, or
   "Reopen Editor With..."). The text editor stays the default for `.dmm` files.
