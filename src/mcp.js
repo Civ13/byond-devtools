@@ -6,6 +6,7 @@
  *
  * Serves the tools in src/agent-api.js for one project root. Read-only unless --allow-write is
  * given, and even then a map is written only by map_edit with apply: true and a passing base hash.
+ * ingame_render boots the game (temp folder, -safe, 127.0.0.1) only with --allow-game.
  * Logs go to stderr; stdout carries protocol messages only.
  */
 import { createInterface } from 'node:readline';
@@ -18,7 +19,7 @@ export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 function parseArgs(argv) {
-  const opts = {}, flags = new Set(['allow-write']), values = new Set(['root', 'dme', 'byond', 'tree']);
+  const opts = {}, flags = new Set(['allow-write', 'allow-game']), values = new Set(['root', 'dme', 'byond', 'tree']);
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i].replace(/^--/, '');
     if (flags.has(k)) opts[k] = true;
@@ -81,8 +82,8 @@ export async function serve(api, input = process.stdin, output = process.stdout)
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     const opts = parseArgs(process.argv.slice(2));
-    const api = createAgentApi({ root: opts.root, dme: opts.dme, byond: opts.byond, tree: opts.tree, allowWrite: !!opts['allow-write'] });
-    process.stderr.write(`[byond-devtools] MCP server for ${opts.root}${opts['allow-write'] ? ' (writes allowed)' : ' (read-only)'}\n`);
+    const api = createAgentApi({ root: opts.root, dme: opts.dme, byond: opts.byond, tree: opts.tree, allowWrite: !!opts['allow-write'], allowGame: !!opts['allow-game'] });
+    process.stderr.write(`[byond-devtools] MCP server for ${opts.root}${opts['allow-write'] ? ' (writes allowed)' : ' (read-only)'}${opts['allow-game'] ? ', in-game renders allowed' : ''}\n`);
     await serve(api);
   } catch (e) { process.stderr.write(`[byond-devtools] ${e.message}\n`); process.exitCode = 1; }
 }

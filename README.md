@@ -341,6 +341,7 @@ maps without shelling out to the CLI.
 ```sh
 node src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond /path/to/byond/bin            # read-only
 node src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond /path/to/byond/bin --allow-write
+node src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond /path/to/byond/bin --allow-game    # adds ingame_render
 claude mcp add byond-map -- node /path/to/byond-devtools/src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond BIN
 ```
 
@@ -354,13 +355,28 @@ Or in a project's `.mcp.json`:
 
 - Tools: `map_summary`, `map_cell`, `map_find`, `map_render` (PNG image, at most 64x64 tiles),
   `map_lint`, `type_info`, `map_diff` (optionally rendered), `map_edit`, `prefab_extract`,
-  `prefab_place`, `map_generators`, `map_check`. Inputs are validated against each tool's
-  schema; unknown arguments are refused. Failures come back as tool errors the model can read.
+  `prefab_place`, `map_generators`, `map_check`, `project_compile`, `icon_info`, `icon_render`,
+  `image_compare` and `ingame_render`. Inputs are validated against each tool's schema; unknown
+  arguments are refused. Failures come back as tool errors the model can read.
+- Every PNG tool takes `scale` (1-8, nearest neighbour), `background` (`#rrggbb[aa]` or
+  `transparent`), `inline` (false leaves the image out of the reply) and `file` (true writes it to
+  a `byond-devtools-mcp` folder under the OS temp folder and returns the path, never into the
+  project). `map_render` also filters atoms by `kinds`/`exclude_kinds` and `types`/`exclude_types`
+  (a type and its subtypes), hiding or dimming the rest (`filter_mode`), and outlines tiles with
+  `boxes: [{x, y, width?, height?, color?}]`.
+- `icon_render` draws one state, dir and frame of a `.dmi` (or a type's default icon), or with
+  `sheet: true` every dir (rows) by frame (columns). `image_compare` compares a reference PNG
+  (project-relative, or a `file: true` output) with another PNG or a fresh static render and
+  returns the differing pixel count, bounds and max/mean delta over a `threshold`, with a
+  reference | candidate | heatmap image. Animated output (APNG) is not produced.
+- `ingame_render` is the CLI's `ingame` render over MCP: it compiles and boots the game headless
+  in a temp folder (`-safe`, 127.0.0.1, no saves) and composes the initialized world. It runs game
+  code, so it is refused unless the server was started with `--allow-game`.
 - Read-only by default. `map_edit` with `apply: true` needs `--allow-write`, and then still
   requires the patch's base sha256 and expected stacks, verifies the result, and refuses the
   write if an optional `contract` fails. Read-only tools are annotated `readOnlyHint`.
 - Map paths are project-relative with realpath containment, as in the CLI. The type tree is
-  built once per server (restart it after changing DM code). Nothing runs game code.
+  built once per server (restart it after changing DM code). Only `ingame_render` runs game code.
 - The transport-free API is `createAgentApi()` in `src/agent-api.js`.
 
 ## Compile and playtest
