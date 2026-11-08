@@ -55,3 +55,31 @@ test('compile and playtest reports become per-file problems', async () => {
   assert.match(m.get('code/b.dm')[0].message, /^runtime error: Cannot read null\.v \(x3\)\nproc: boom/);
   assert.match(missingSetup({ dme: 'x.dme' }), /byondBin/); assert.equal(missingSetup({ dme: 'x.dme', byondBin: '/b' }), null);
 });
+
+test('the editor compares with a git revision and finds a key\'s line', async () => {
+  const { mkdtemp, cp, rm } = await import('node:fs/promises');
+  const { spawnSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bd-compare-'));
+  try {
+    await cp(ROOT, dir, { recursive: true });
+    const git = (...a) => { const r = spawnSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
+    git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base');
+    // Edit in memory: one tile's stack changes (the saved file and HEAD stay the same).
+    const { openMapModel } = await import('../vscode/lib/mapdoc.mjs');
+    const model = await openMapModel({ text, core });
+    model.setCells([{ x: 1, y: 1, z: 1, set: ['/obj/box', '/turf/floor', '/area/zone'] }]);
+    const s = await openSession({ text: () => model.text, root: dir, mapRelative: 'maps/render.dmm', dme: 'render.dme', treeFile: path.resolve('fixtures/render/tree.xml'), core });
+    const ch = await s.changes({ ref: 'HEAD' });
+    assert.equal(ch.changedCells, 1); assert.deepEqual([ch.cells[0].x, ch.cells[0].y, ch.cells[0].z], [1, 1, 1]);
+    const cmp = await s.compare({ x1: 1, y1: 1, x2: 3, y2: 3, z: 1, ref: 'HEAD' });
+    assert.equal(cmp.compare.changedTiles, 1);
+    const img = decodePng(Buffer.from(cmp.png, 'base64'));
+    assert.deepEqual([img.width, img.height], [cmp.width, cmp.height]); // one panel: lines up with the tile grid
+    const key = s.inspect(1, 1, 1).key, line = s.keyLine(key);
+    assert.match(model.text.split('\n')[line - 1], new RegExp(`^"${key}" = \\(`));
+    assert.equal(s.keyLine('zz'), null); assert.equal(s.keyLine('a"b'), null);
+    await assert.rejects(s.changes({ ref: 'nope' }), /git show/);
+    await assert.rejects(s.changes({ ref: 'HEAD..x' }), /Invalid git revision/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

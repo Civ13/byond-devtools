@@ -105,6 +105,15 @@ class MapEditorProvider {
       default: throw new Error(`Unknown edit ${m.op}`);
     }
   }
+  /** Open the map as text beside the editor at a tile's dictionary key definition. */
+  async reveal(doc, key) {
+    const line = doc.session.keyLine(key);
+    if (!line) throw new Error(`Key "${key}" is not defined in this map.`);
+    const text = await vscode.workspace.openTextDocument(doc.uri);
+    const pos = new vscode.Position(line - 1, 0);
+    await vscode.window.showTextDocument(text, { viewColumn: vscode.ViewColumn.Beside, selection: new vscode.Range(pos, pos), preview: true });
+    if (doc.model.isDirty()) this.refresh(doc, 'The text shows the saved file; unsaved edits are not in it yet.');
+  }
   async saveCustomDocument(doc) {
     const patch = doc.model.savePatch();
     if (!patch.edits.length) return;
@@ -147,7 +156,9 @@ class MapEditorProvider {
         else if (m.type === 'inspect') post({ type: 'cell', cell: session.inspect(m.x, m.y, m.z) });
         else if (m.type === 'vars') post({ type: 'vars', path: m.path, vars: await session.varsOf(m.path) });
         else if (m.type === 'displayed') record.displayed = { width: m.width, height: m.height, error: m.error };
-        else if (m.type === 'render') post({ type: 'image', ...await session.render(m.view) });
+        else if (m.type === 'render') post({ type: 'image', ...await (m.view.compare ? session.compare({ ...m.view, ref: m.view.compare }) : session.render(m.view)) });
+        else if (m.type === 'changes') post({ type: 'changes', ...await session.changes({ ref: m.ref }) });
+        else if (m.type === 'reveal') await this.reveal(doc, m.key);
         else if (m.type === 'edit') { if (!await this.edit(doc, m)) post({ type: 'error', message: 'Nothing changed.' }); }
         else if (m.type === 'undo' || m.type === 'redo') await vscode.commands.executeCommand(m.type);
       } catch (e) { post({ type: 'error', message: e.message }); }
@@ -170,6 +181,7 @@ function html(webview, media) {
 <span class="layers" title="Atom kinds to draw">show <label><input type="checkbox" id="k-turf" checked>turfs</label><label><input type="checkbox" id="k-obj" checked>objs</label><label><input type="checkbox" id="k-mob" checked>mobs</label><label><input type="checkbox" id="k-area">areas</label></span>
 <input id="focus" list="types" placeholder="highlight type" title="Dim everything except this type and its subtypes" spellcheck="false">
 <label title="Play animated icon states (8 frames, 200 ms each)"><input type="checkbox" id="animate">animate</label>
+<span class="compare" title="Outline the tiles that differ from the map at a git revision"><label><input type="checkbox" id="compare">compare with</label><input id="ref" value="HEAD" spellcheck="false" size="10"><button id="next" class="secondary" title="Jump to the next changed tile">Next change</button></span>
 <span class="tools"><button data-tool="select" title="Click a tile to inspect and edit its stack">Select</button><button data-tool="place" title="Click or drag to place the brush type">Place</button><button data-tool="erase" title="Click or drag to remove the top object">Erase</button><button data-tool="stamp" title="Click or drag to copy a whole stack">Stamp</button></span>
 <button id="undo" class="secondary" title="Undo (Ctrl+Z)">Undo</button><button id="redo" class="secondary" title="Redo (Ctrl+Y)">Redo</button>
 <span id="brushbar"><input id="brush" list="types" placeholder="type path to place, e.g. /obj/structure/chair" spellcheck="false"></span><span id="stampinfo" hidden>Stamp: none</span>
@@ -259,7 +271,8 @@ function activate(context) {
     viewType: VIEW_TYPE,
     diagnostics: () => { const out = []; diagnostics.forEach((uri, list) => out.push({ uri: uri.toString(), list: list.map(d => ({ line: d.range.start.line + 1, message: d.message, severity: d.severity })) })); return out; },
     sessions: () => [...sessions].map(s => ({ uri: s.uri, summary: s.doc.session.summary(), displayed: s.displayed, inspect: (x, y, z) => s.doc.session.inspect(x, y, z), render: v => s.doc.session.render(v),
-      edit: m => s.provider.edit(s.doc, m), text: () => s.doc.model.text, dirty: () => s.doc.model.isDirty() })),
+      edit: m => s.provider.edit(s.doc, m), text: () => s.doc.model.text, dirty: () => s.doc.model.isDirty(),
+      compare: v => s.doc.session.compare(v), changes: o => s.doc.session.changes(o), reveal: key => s.provider.reveal(s.doc, key) })),
   };
 }
 function deactivate() {}

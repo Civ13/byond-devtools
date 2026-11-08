@@ -47,6 +47,11 @@ async function run() {
     const shown = await wait(() => api.sessions().find(x => x.uri === vscode.Uri.file(mapFile).toString() && x.displayed)?.displayed);
     assert.deepEqual(shown, { width: 24, height: 24, error: undefined });
     await assert.rejects(s.render({ x1: 1, y1: 1, x2: 100, y2: 100, z: 2 }), /outside the map/);
+    // Show in text: the .dmm opens beside the editor with the cursor on the tile's key definition.
+    await s.reveal(cell.key);
+    const editor = await wait(() => vscode.window.visibleTextEditors.find(e => e.document.uri.fsPath === mapFile));
+    assert.match(editor.document.lineAt(editor.selection.active.line).text, new RegExp(`^"${cell.key}" = \\(`));
+    await assert.rejects(s.reveal('zz'), /not defined/);
   });
   await test('opening and rendering never modifies the map or makes it dirty', async () => {
     assert.equal(sha(mapFile), before);

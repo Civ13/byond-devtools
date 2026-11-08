@@ -15,9 +15,12 @@ it was checked against (see [verification](docs/verification.md)).
 - **CLI:** clone this repository and run `node src/cli.js` with Node.js 22+. There is
   nothing to install.
 
-Current release: [v0.3.0](https://github.com/Civ13/byond-devtools/releases/tag/v0.3.0): the VS Code editor gains kind
-toggles, type highlighting and animated states, and the MCP server gains icon renders, animated PNGs,
-image comparison and in-game renders (see [Agent API (MCP)](#agent-api-mcp)).
+Current release: [v0.4.0](https://github.com/Civ13/byond-devtools/releases/tag/v0.4.0): the VS Code editor compares a map
+with a git revision (changed tiles outlined, Next change) and opens a tile's definition in the text;
+the MCP server gains `dump_render` (live views such as Civ13's `character_view`), resources and
+prompts, and the CLI gains `icon-diff` for sprite review. v0.3.0 added kind toggles, type
+highlighting, animated states, icon renders, animated PNGs, image comparison and in-game renders
+(see [Agent API (MCP)](#agent-api-mcp)).
 
 ## Core parser
 
@@ -80,7 +83,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 
 ## Roadmap (complete)
 
-All phases are merged; v0.1.0 released them, v0.2.0 added map editing and v0.3.0 render options:
+All phases are merged; v0.1.0 released them, v0.2.0 added map editing, v0.3.0 render options and v0.4.0 map compare, live views and sprite review:
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).

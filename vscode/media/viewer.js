@@ -12,9 +12,11 @@
   function render() {
     const v = view(); status('Rendering...');
     const kinds = ['turf', 'obj', 'mob', 'area'].filter(k => $(`k-${k}`).checked), focus = $('focus').value.trim(), animate = $('animate').checked;
-    vscode.setState({ x: v.x1, y: v.y1, z: v.z, size: v.size, tool, brush: $('brush').value, kinds, focus, animate });
-    if (animate) status('Rendering 8 frames...');
-    send({ type: 'render', view: { x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, z: v.z, kinds, focus, animate } });
+    const compare = $('compare').checked ? ($('ref').value.trim() || 'HEAD') : null;
+    vscode.setState({ x: v.x1, y: v.y1, z: v.z, size: v.size, tool, brush: $('brush').value, kinds, focus, animate, compare: $('compare').checked, ref: $('ref').value });
+    if (animate && !compare) status('Rendering 8 frames...');
+    if (compare) status(`Comparing with ${compare}...`);
+    send({ type: 'render', view: { x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, z: v.z, kinds, focus, animate, compare } });
   }
   // The PNG goes in as a blob: URL (no data: URL length limits), and the extension hears back
   // whether it actually displayed, so a blank view always comes with a reason.
@@ -105,7 +107,9 @@
   function drawCell() {
     const box = $('cell'); box.replaceChildren();
     if (!cell) { box.append('Click a tile.'); return; }
-    box.append(el('div', { className: 'where' }, `(${cell.x},${cell.y},${cell.z}) key ${cell.key ?? '-'}`));
+    const where = el('div', { className: 'where' }, `(${cell.x},${cell.y},${cell.z}) key ${cell.key ?? '-'} `);
+    if (cell.key) { const b = el('button', { textContent: 'Show in text', className: 'small secondary', title: 'Open the .dmm beside this editor at this tile\'s key definition' }); b.addEventListener('click', () => send({ type: 'reveal', key: cell.key })); where.append(b); }
+    box.append(where);
     if (!cell.key) { box.append(el('div', {}, 'No authored cell here; cells outside the map\'s grid blocks cannot be added.')); return; }
     const atoms = draft ?? cell.atoms;
     atoms.forEach((a, i) => {
@@ -165,6 +169,8 @@
       if (state.kinds) for (const k of ['turf', 'obj', 'mob', 'area']) $(`k-${k}`).checked = state.kinds.includes(k);
       if (state.focus) $('focus').value = state.focus;
       if (state.animate) $('animate').checked = true;
+      if (state.ref) $('ref').value = state.ref;
+      if (state.compare) $('compare').checked = true;
       $('report').textContent = `world ${summary.world.maxX}x${summary.world.maxY}x${summary.world.maxZ}, ${summary.cellCount} cells, ${summary.dictionaryEntries} entries` +
         (summary.diagnostics.length ? `\n${summary.diagnostics.length} parser diagnostics` : '');
       render();
@@ -176,6 +182,7 @@
       region = m.region;
       if (m.error) { status(m.error); img.removeAttribute('src'); drawOverlay(); return; }
       iconSize = m.iconSize; show(m.png);
+      if (m.compare) { status(`(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} compared with ${m.compare.ref}: ${m.compare.changedTiles} changed tile(s) outlined (yellow modified, blue reordered, green added, red removed)`); return; }
       status(m.drawn === 0 ? 'Nothing in this view could be drawn: no icon resolved (see Report).'
         : `(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} - ${m.drawn} sprites, ${m.truthLayer}${m.animation ? `, animated (${m.animation.frames} frames)` : ''}${m.focus ? `, highlighting ${m.focus}` : ''}, not a client screenshot`);
       $('report').textContent = (m.diagnostics.length ? m.diagnostics.map(d => `${d.code} ${d.detail} x${d.count}`).join('\n') : 'Everything drawn exactly.');
@@ -185,12 +192,32 @@
     } else if (m.type === 'changed') {
       // The map changed (an edit, undo, redo, revert or reload): redraw the view and the selected tile.
       if (m.summary) summary = m.summary;
+      changes = null; // the list is rebuilt from the new text on the next "Next change"
       render(); if (selected) send({ type: 'inspect', ...selected });
       if (m.message) status(m.message);
+    } else if (m.type === 'changes') {
+      changes = m; changeIndex = -1;
+      $('report').textContent = `${m.changedCells} tile(s) differ from ${m.ref}` + (m.levels.length ? `\n${m.levels.map(l => `z${l.z}: ${l.changedCells} in (${l.x1},${l.y1})-(${l.x2},${l.y2})`).join('\n')}` : '');
+      nextChange();
     } else if (m.type === 'error') status(m.message);
   });
+  // "Next change" walks the changed tiles (first 500), centring the view on each and selecting it.
+  let changes = null, changeIndex = -1;
+  function nextChange() {
+    if (!changes || !changes.cells.length) { status(changes ? `No tiles differ from ${changes.ref}.` : ''); return; }
+    changeIndex = (changeIndex + 1) % changes.cells.length;
+    const c = changes.cells[changeIndex], size = Number($('size').value);
+    $('x').value = Math.max(1, c.x - Math.floor(size / 2)); $('y').value = Math.max(1, c.y - Math.floor(size / 2)); $('z').value = c.z;
+    $('compare').checked = true; render(); select({ x: c.x, y: c.y, z: c.z });
+    status(`Change ${changeIndex + 1} of ${changes.cells.length}${changes.truncated ? '+' : ''}: (${c.x},${c.y},${c.z}) ${c.change}`);
+  }
+  $('next').addEventListener('click', () => {
+    const ref = $('ref').value.trim() || 'HEAD';
+    if (changes && changes.ref === ref) nextChange(); else send({ type: 'changes', ref });
+  });
+  $('ref').addEventListener('change', () => { changes = null; if ($('compare').checked) render(); });
   $('go').addEventListener('click', render);
-  for (const id of ['k-turf', 'k-obj', 'k-mob', 'k-area', 'animate']) $(id).addEventListener('change', render);
+  for (const id of ['k-turf', 'k-obj', 'k-mob', 'k-area', 'animate', 'compare']) $(id).addEventListener('change', render);
   $('focus').addEventListener('change', render);
   $('undo').addEventListener('click', () => send({ type: 'undo' }));
   $('redo').addEventListener('click', () => send({ type: 'redo' }));
