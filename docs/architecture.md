@@ -5,7 +5,7 @@
 ```
 DMM source --> bounded parser --> immutable authored snapshot
                                     |          |          |
-                                  CLI      future UI   future agent API
+                                  CLI    VS Code UI   agent API (MCP)
 DME / DM / DMI --> type tree, DMI decoder, static renderer ---+
 ```
 
@@ -79,6 +79,8 @@ prove native movement/lighting/constructor behavior.
 
 ## Agent contract
 
+Implemented in `src/agent-api.js` (tools) and `src/mcp.js` (MCP stdio transport), with
+contracts as postconditions (`src/contracts.js`) and prefabs placed as ordinary patches.
 Observation: open a pinned snapshot; summary; inspect cell/region; find by exact type
 or subtype; render bounded coordinate-labelled crops; analyze routes with explicit
 actor assumptions. Editing: a patch declares base hash, expected old contents,

@@ -14,6 +14,8 @@
 - The other file writes are `render --out`, `diff --out`, `prefab-* --out` (JSON, never overwritten) and `edit --inverse-out` (one PNG, no overwrite without `--force`).
   Prefabs place through an edit patch, never by writing the map.
   The renderer core (`src/render.js`) stays pure; file access lives in `src/render-project.js`.
+- The MCP server (`src/mcp.js`) is read-only unless started with `--allow-write`; its only
+  write path is `map_edit` through `src/edit-project.js`.
 - Do not vendor Civ13 maps/assets or third-party source without license review.
 - Report passed, failed and unrun checks separately. Parser success is not native
   compile, gameplay validation, or a finished editor.
