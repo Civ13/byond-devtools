@@ -44,7 +44,10 @@ async function run() {
     assert.equal(got.width, 24); assert.deepEqual(Buffer.from(got.rgba), Buffer.from(want.rgba));
     assert.equal(r.diagnostics.length, 4);
     // The webview renders on open (default view clipped to the 3x3 map) and must actually show it.
-    const shown = await wait(() => api.sessions().find(x => x.uri === vscode.Uri.file(mapFile).toString() && x.displayed)?.displayed);
+    // A cold Windows runner can take a while to start the webview, so wait longer here and, on a
+    // timeout, report how far each open view got.
+    const mine = () => api.sessions().filter(x => x.uri === vscode.Uri.file(mapFile).toString());
+    const shown = await wait(() => mine().find(x => x.displayed)?.displayed, 60000, { toString: () => `the webview to display the image; views: ${JSON.stringify(mine().map(x => x.status))}` });
     assert.deepEqual(shown, { width: 24, height: 24, error: undefined });
     await assert.rejects(s.render({ x1: 1, y1: 1, x2: 100, y2: 100, z: 2 }), /outside the map/);
     // Show in text: the .dmm opens beside the editor with the cursor on the tile's key definition.
@@ -96,6 +99,15 @@ async function run() {
       fs.rmSync(copy, { force: true });
     }
     assert.equal(sha(mapFile), before, 'the fixture map itself is untouched');
+  });
+  await test('Compare icon with git revision opens a report for a .dmi', async () => {
+    const icon = vscode.Uri.file(path.join(project, 'icons', 'objs.dmi'));
+    const r = await api.compareIcon(icon, 'HEAD');
+    assert.equal(r.panel, true, JSON.stringify(r));
+    assert.equal(r.before.source, 'git'); assert.equal(r.summary.changed + r.summary.added + r.summary.removed, 0);
+    assert.ok(r.summary.same > 0);
+    assert.match((await api.compareIcon(vscode.Uri.file(mapFile), 'HEAD')).error, /not a \.dmi/);
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
   await test('compile explains missing setup and leaves the Problems panel empty', async () => {
     await config.update('byondBin', '', vscode.ConfigurationTarget.Global);

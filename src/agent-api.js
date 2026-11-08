@@ -16,7 +16,7 @@ import { resolveVar, lintMap } from './typetree.js';
 import { overrideAssignments } from './world.js';
 import { loadRenderer, renderMap } from './render-project.js';
 import { editMapFile } from './edit-project.js';
-import { loadDiff, renderDiff } from './diff-project.js';
+import { loadDiff, renderDiff, loadIconDiff } from './diff-project.js';
 import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { findGenerators, GENERATOR_PROFILES } from './generators.js';
@@ -65,6 +65,7 @@ export const TOOLS = Object.freeze([
   { name: 'map_render', description: 'Static PNG preview of a region (authored source + compiled type defaults, not a client screenshot). At most 64x64 tiles. Filters hide or dim atoms by kind or type; boxes outline tiles; animate makes an animated PNG.', inputSchema: obj({ ...mapArg, ...region, grid: { type: 'integer', minimum: 0 }, show_invisible: { type: 'boolean' }, ...filters, boxes, animate: animateMap, ...output }, ['map', 'x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true } },
   { name: 'icon_info', description: 'A DMI\'s size, states, dirs, frames and delays.', inputSchema: obj({ dmi: { type: 'string', description: 'Project-relative .dmi or .png' } }, ['dmi']), annotations: { readOnlyHint: true } },
   { name: 'icon_render', description: 'PNG of one icon state: one dir and frame, with animate an animated PNG, or with sheet a grid of every dir (rows) by frame (columns). Give dmi + state, or a type to draw its default icon, state and dir.', inputSchema: obj({ dmi: { type: 'string' }, type: { type: 'string' }, state: { type: 'string' }, dir: { enum: Object.keys(DIRS) }, frame: { type: 'integer', minimum: 1 }, movement: { type: 'boolean' }, sheet: { type: 'boolean' }, animate: { type: 'boolean', description: 'Animated PNG of the state in this dir with its own delays, rewind and loop count' }, ...output }), annotations: { readOnlyHint: true } },
+  { name: 'icon_diff', description: 'Compare a .dmi with its version at a git revision (default HEAD) or with another .dmi, state by state: added, removed and changed states (size, dirs, frames, delays, pixels), and a PNG with one row per changed state: before | after | heatmap.', inputSchema: obj({ dmi: { type: 'string', description: 'Project-relative .dmi (the "after" side)' }, git_ref: { type: 'string', description: 'Revision for the "before" side (default HEAD)' }, before: { type: 'string', description: 'Another project-relative .dmi as the "before" side, instead of git_ref' }, threshold: { type: 'integer', minimum: 0, maximum: 255 }, max_rows: { type: 'integer', minimum: 1, maximum: 200, description: 'Rows in the picture (default 40)' }, ...output }, ['dmi']), annotations: { readOnlyHint: true } },
   { name: 'image_compare', description: 'Compare a PNG reference with a candidate (another PNG, or a static render of map + region). Returns differing pixel counts and bounds, and optionally a side | heatmap PNG.', inputSchema: obj({ reference: { type: 'string', description: 'Project-relative PNG, or a path this server wrote with file: true' }, candidate: { type: 'string', description: 'PNG path as for reference; omit to render map + region' }, ...regionProps, ...filters, threshold: { type: 'integer', minimum: 0, maximum: 255 }, show: { enum: ['side', 'heatmap', 'none'] }, ...output }, ['reference']), annotations: { readOnlyHint: true } },
   { name: 'ingame_render', description: 'Boot the game headless (RUNS GAME CODE in a temp folder: -safe, 127.0.0.1, no saves) and render the initialized world: runtime icons, overlays, colour matrices, planes and lighting. Needs the server started with --allow-game. Slow (a full compile and boot). At most 64x64 tiles.', inputSchema: obj({ ...region, map: { type: 'string', description: 'Optional map to select instead of the .dme\'s own' }, profile: { enum: PROFILES }, time_of_day: { type: 'string' }, boxes, ...output }, ['x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true, openWorldHint: false } },
   { name: 'dump_render', description: 'Render an appearance dump in the ingame_render format, such as Civ13\'s character_view of a live character: appearance trees, colour matrices, planes and plane masters. Icons come inline as base64 or as project-relative source paths. At most 64x64 tiles; runs nothing.', inputSchema: obj({ dump: { type: 'object', description: '{region: [x1, y1, x2, y2, z], icon_size, appearances, icons, cells, plane_masters?, see_invisible?}' }, boxes, ...output }, ['dump']), annotations: { readOnlyHint: true } },
@@ -206,6 +207,13 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       const input = await readProjectBytes(root, dmi), icon = decodeDmi(input.data, { plainPng: true });
       return { provenance: { dmi, sha256: input.sha256, truthLayer: 'authored-asset' }, data: { version: icon.version, width: icon.width, height: icon.height, sheet: icon.sheet, plain: icon.plain,
         states: icon.states.map(s => ({ name: s.name, dirs: s.dirs, frames: s.frames, delay: s.delay, movement: s.movement, loop: s.loop, rewind: s.rewind })) } };
+    },
+    async icon_diff(a) {
+      let d;
+      try { d = await loadIconDiff({ root, dmi: a.dmi, gitRef: a.before ? undefined : (a.git_ref || 'HEAD'), before: a.before, threshold: a.threshold ?? 0, maxRows: a.max_rows ?? 40 }); }
+      catch (e) { throw new ToolInputError(e.message); }
+      const out = d.image ? await finish(d.image, a, { comment: `byond-devtools icon diff: before | after | heatmap; ${d.after.dmi}` }) : { png: undefined, image: null };
+      return { provenance: { before: d.before, after: d.after, truthLayer: 'authored-asset' }, data: { ...d.summary, states: d.states, image: out.image }, png: out.png };
     },
     async icon_render(a) {
       if (!a.dmi === !a.type) throw new ToolInputError('Give exactly one of dmi or type');

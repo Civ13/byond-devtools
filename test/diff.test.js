@@ -79,6 +79,11 @@ test('a dry-run patch diff renders three panels and never writes the map', async
   const img = decodePng(r.png);
   assert.equal(img.width, 3 * 3 * 8 + 8); assert.equal(img.height, 24); assert.equal(r.outlined, 1);
   assert.deepEqual(await readFile(path.join(ROOT, MAP)), bytes);
+  // A level only the after side has: the before panel is empty, not an error.
+  const twoLevels = { ...loaded, afterText: loaded.afterText + '\n(1,1,2) = {"\naaa\naaa\naaa\n"}\n' };
+  twoLevels.afterMap = parseDmm(twoLevels.afterText);
+  const added = await renderDiff(renderer, { root: ROOT, loaded: twoLevels, region: { x1: 1, y1: 1, x2: 3, y2: 3, z: 2 } });
+  assert.equal(added.diagnostics.before[0].code, 'level-missing'); assert.equal(added.outlined, 9);
   await assert.rejects(loadDiff({ root: ROOT, map: MAP, patch: { ...patch, base: '0'.repeat(64) } }), /changed since/);
   await assert.rejects(loadDiff({ root: ROOT, map: MAP }), /exactly one/);
 });
