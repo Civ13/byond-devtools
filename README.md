@@ -69,7 +69,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
 3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
-   inverse patch and verified unchanged regions (done; visual diff to follow).
+   inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
 5. Prefabs, generator-aware tools, spatial contracts and local agent API/MCP.
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
@@ -207,6 +207,28 @@ node src/cli.js edit --root /path/to/Civ13 --map maps/x.dmm --patch patch.json -
   original to catch concurrent changes, then renames it over the map. A UTF-8 BOM is kept.
 - The inverse patch (`base` = the new hash) restores every cell. It is not byte-for-byte:
   the new dictionary entries stay, unused.
+
+## Map diff
+
+`diff` compares a map with another file, a git revision, or the result of a patch dry run.
+Cells are compared by atom stack, not dictionary key, so a map that mapmerge2 re-keyed has no
+changes. Each changed cell lists the atoms removed and added (as multisets); `reordered` means
+the same atoms in a new order, and `added`/`removed` mean a hole on the other side.
+
+```sh
+node src/cli.js diff --root /path/to/Civ13 --map maps/x.dmm --git-ref HEAD
+node src/cli.js diff --root /path/to/Civ13 --map maps/x.dmm --patch patch.json \
+  --dme civ13.dme --byond BIN --out diff.png      # before | after | changed tiles
+```
+
+- Counts, per-level bounds and per-type totals are complete; the cell list stops at `--limit`
+  (default 10,000) and says `truncated`.
+- `--out` renders the changed area (bounding box plus `--pad` tiles, at most 64 a side, or an
+  explicit `--x1..--y2 --z`) twice with the static renderer and writes three panels: before,
+  after, and after with unchanged tiles dimmed and changed tiles outlined (yellow modified,
+  blue reordered, green added, red removed).
+- `--git-ref` runs `git show REF:path` without a shell; revisions with `..` or a leading
+  `-` are refused. A patch diff never writes the map.
 
 ## Native BYOND agreement
 
