@@ -15,3 +15,5 @@ button.small { padding: 0 6px; } button:disabled { opacity: 0.5; cursor: default
 .atom { border: 1px solid var(--vscode-panel-border); padding: 4px; margin: 4px 0; }
 .row { display: flex; gap: 4px; align-items: center; margin: 2px 0; } .row .path { flex: 1; min-width: 0; }
 .row.var { padding-left: 12px; } .row .key { width: 8em; } .row .value { flex: 1; min-width: 0; } .actions { margin-top: 6px; } .where { opacity: 0.8; margin-bottom: 4px; }
+#focus { width: 14em; } .layers label, header > label { white-space: nowrap; } .layers label { margin-left: 4px; }
+header input[type="checkbox"] { width: auto; }

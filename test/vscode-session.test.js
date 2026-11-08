@@ -2,7 +2,8 @@ import test from 'node:test'; import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { openSession, coreDir, MAX_VIEW_TILES } from '../vscode/lib/session.mjs';
-import { decodePng } from '../src/png.js';
+import { decodePng, apngInfo } from '../src/png.js';
+import { ANIMATION_FRAMES } from '../vscode/lib/session.mjs';
 
 const ROOT = 'fixtures/render/project';
 const text = await readFile(`${ROOT}/maps/render.dmm`, 'utf8');
@@ -19,6 +20,24 @@ test('the viewer session summarises, inspects and renders the golden image', asy
   assert.deepEqual(clipped.region, { x1: 2, y1: 2, x2: 3, y2: 3, z: 1 });
   await assert.rejects(s.render({ x1: 1, y1: 1, x2: 3, y2: 3, z: 2 }), /outside the map/);
   assert.equal(MAX_VIEW_TILES, 4096);
+});
+test('the editor view hides kinds, highlights a type and animates', async () => {
+  const s = await openSession({ text, root: ROOT, mapRelative: 'maps/render.dmm', dme: 'render.dme', treeFile: 'fixtures/render/tree.xml', core });
+  const full = decodePng(Buffer.from((await s.render({ x1: 1, y1: 1, x2: 3, y2: 3, z: 1 })).png, 'base64'));
+  const turfs = await s.render({ x1: 1, y1: 1, x2: 3, y2: 3, z: 1, kinds: ['turf'] });
+  assert.ok(turfs.diagnostics.some(d => d.code === 'filtered-out' && d.detail === '/obj/tree'));
+  assert.notDeepEqual(decodePng(Buffer.from(turfs.png, 'base64')).rgba, full.rgba);
+  const focus = await s.render({ x1: 1, y1: 1, x2: 3, y2: 3, z: 1, focus: '/obj/box/' });
+  assert.equal(focus.focus, '/obj/box');
+  const alphas = img => { const out = new Set(); for (let i = 3; i < img.rgba.length; i += 4) out.add(img.rgba[i]); return out; };
+  const dimmed = decodePng(Buffer.from(focus.png, 'base64'));
+  // Floors are dimmed to a quarter alpha; the boxes on top stay fully opaque.
+  assert.ok(alphas(dimmed).has(64)); assert.ok(alphas(dimmed).has(255)); assert.ok(!alphas(full).has(64));
+  const objs = decodePng(Buffer.from((await s.render({ x1: 1, y1: 1, x2: 3, y2: 3, z: 1, kinds: ['obj'], focus: '/obj/tree' })).png, 'base64'));
+  assert.ok(alphas(objs).has(255), 'the tree is drawn at full alpha');
+  const anim = await s.render({ x1: 1, y1: 1, x2: 3, y2: 3, z: 1, animate: true });
+  assert.equal(apngInfo(Buffer.from(anim.png, 'base64')).frames, ANIMATION_FRAMES); assert.equal(anim.animation.frames, ANIMATION_FRAMES);
+  assert.deepEqual(decodePng(Buffer.from(anim.png, 'base64')).rgba, full.rgba);
 });
 test('without a type tree or BYOND the session explains what to configure', async () => {
   const s = await openSession({ text, root: ROOT, mapRelative: 'maps/render.dmm', dme: 'render.dme', core });

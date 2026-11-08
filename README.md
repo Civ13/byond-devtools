@@ -15,9 +15,9 @@ it was checked against (see [verification](docs/verification.md)).
 - **CLI:** clone this repository and run `node src/cli.js` with Node.js 22+. There is
   nothing to install.
 
-Current release: [v0.2.0](https://github.com/Civ13/byond-devtools/releases/tag/v0.2.0) (map editing in VS Code).
-Since then, `main` has added MCP tools for icon renders, animated PNGs, image comparison and
-in-game renders (see [Agent API (MCP)](#agent-api-mcp)). They run from a checkout and need no release.
+Current release: [v0.3.0](https://github.com/Civ13/byond-devtools/releases/tag/v0.3.0): the VS Code editor gains kind
+toggles, type highlighting and animated states, and the MCP server gains icon renders, animated PNGs,
+image comparison and in-game renders (see [Agent API (MCP)](#agent-api-mcp)).
 
 ## Core parser
 
@@ -80,7 +80,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 
 ## Roadmap (complete)
 
-All phases are merged; v0.1.0 released them and v0.2.0 added map editing:
+All phases are merged; v0.1.0 released them, v0.2.0 added map editing and v0.3.0 render options:
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
@@ -88,7 +88,7 @@ All phases are merged; v0.1.0 released them and v0.2.0 added map editing:
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
 5. Prefabs, generator-aware tools, spatial contracts and a local agent API/MCP server (done;
-   icon, animated, comparison and in-game render tools added after v0.2.0).
+   icon, animated, comparison and in-game render tools in v0.3.0).
 6. Authorized native compiler, runtime-error and profiler capture, and local playtests,
    distinct from static validation; no live-server or persistence actions (done).
 
