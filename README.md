@@ -172,7 +172,7 @@ node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-
 
 `vscode/` is a read-only custom editor for `.dmm` files: rendered views with the static
 renderer, tile inspection and diagnostics. CI runs its integration suite inside real VS Code
-Stable and Insiders on Linux and Windows and uploads a `.vsix`. See [vscode/README.md](vscode/README.md).
+Stable and Insiders on Linux and Windows and uploads a `.vsix`. See [vscode/README.md](vscode/README.md). Releases: push a tag `vX.Y.Z` matching `vscode/package.json` and the Release workflow publishes a GitHub release with the `.vsix` attached.
 
 ## Safe map edits
 

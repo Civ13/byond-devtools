@@ -1,0 +1,39 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 runs the tests, packages the VS Code preview and
+# publishes a GitHub release with the .vsix attached. The tag must match
+# vscode/package.json's version.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Tag matches the extension version
+        run: |
+          version=$(node -p "require('./vscode/package.json').version")
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME but vscode/package.json is $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - run: npm test
+      - name: Package the .vsix
+        working-directory: vscode
+        run: |
+          npm ci --no-audit --no-fund
+          npm run package
+          mv byond-map-preview.vsix "byond-map-preview-$VERSION.vsix"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed "s/VERSION/$VERSION/g" .github/release-notes.md > notes.md
+          gh release create "$GITHUB_REF_NAME" "vscode/byond-map-preview-$VERSION.vsix" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
