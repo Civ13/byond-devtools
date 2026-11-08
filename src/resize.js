@@ -14,41 +14,11 @@
  * Spec: {maxX, maxY, maxZ, fill: [atom, ...], offsetX?, offsetY?}
  */
 import { parseDmm } from './dmm.js';
-import { EditError, canonicalAtom, compactStack, formatDefinition, keyToNum, numToKey, maxKeys } from './edit.js';
+import { EditError, canonicalAtom, compactStack, formatDefinition, keyToNum, numToKey, maxKeys, widenKeys } from './edit.js';
+
+export { widenKeys };
 
 const LIMIT = 1000; // per axis; BYOND worlds are rarely past 500
-
-/**
- * The same map with every dictionary key one character wider: each key keeps its number
- * (so its order) and gains a leading "a", in the dictionary and the grid. Checked cell by cell.
- */
-export function widenKeys(source, map = parseDmm(source)) {
-  const width = map.keyWidth, wide = k => numToKey(keyToNum(k), width + 1);
-  const edits = [];
-  for (const d of map.definitions) {
-    if (source.slice(d.span.start, d.span.start + width + 2) !== `"${d.key}"`) throw new EditError(`Dictionary entry ${d.key} not understood`);
-    edits.push([d.span.start + 1, d.span.start + 1 + width, wide(d.key)]);
-  }
-  for (const b of map.blocks) {
-    const open = source.indexOf('{"', b.span.start) + 2, close = source.indexOf('"}', open);
-    const body = source.slice(open, close);
-    const text = body.replace(/[A-Za-z]+/g, row => row.match(new RegExp(`.{${width}}`, 'g')).map(wide).join(''));
-    edits.push([open, close, text]);
-  }
-  edits.sort((p, q) => p[0] - q[0]);
-  let out = '', at = 0;
-  for (const [start, end, text] of edits) { out += source.slice(at, start) + text; at = end; }
-  out += source.slice(at);
-  const after = parseDmm(out);
-  if (after.diagnostics.length || after.keyWidth !== width + 1) throw new EditError('Verification failed: widened map does not parse');
-  const before = new Map(map.definitions.map(d => [wide(d.key), d.atoms.map(a => a.raw).join('\0')]));
-  for (const d of after.definitions) if (before.get(d.key) !== d.atoms.map(a => a.raw).join('\0')) throw new EditError(`Verification failed: widened entry ${d.key} changed`);
-  const old = new Map([...map.cells()].map(c => [`${c.x},${c.y},${c.z}`, wide(c.key)]));
-  let n = 0;
-  for (const c of after.cells()) { n++; if (old.get(`${c.x},${c.y},${c.z}`) !== c.key) throw new EditError(`Verification failed: widened cell ${c.x},${c.y},${c.z}`); }
-  if (n !== old.size) throw new EditError('Verification failed: widened cell count changed');
-  return out;
-}
 
 /** Returns {text, before, after, keptCells, filledCells, croppedCells, fillKey, newKeys, orphanedKeys, verified}. */
 export function planResize(source, spec) {

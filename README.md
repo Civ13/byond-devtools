@@ -24,9 +24,9 @@ highlighting, animated states, icon renders, animated PNGs, image comparison and
 (see [Agent API (MCP)](#agent-api-mcp)).
 
 v0.5.0 added [map resize](#resize-a-map) in the CLI (`resize`), MCP (`map_resize`) and VS Code
-(**BYOND: Resize map**). Next, v0.5.1 (on `main`, not yet tagged): resize widens the dictionary keys
-when a map has used every key, and releases publish to Open VSX and sign in to the Marketplace
-with Microsoft Entra.
+(**BYOND: Resize map**). v0.5.1 widens the dictionary keys when resize needs a key on a full map,
+and is published to Open VSX too. Next, v0.5.2 (on `main`, not yet tagged): edits (CLI, MCP and
+the map editor) widen the keys on a full map as well.
 
 ## Core parser
 
@@ -216,12 +216,10 @@ Releasing: bump `vscode/package.json`'s version, merge, then push a matching tag
 The Release workflow runs the tests, publishes a GitHub release with the `.vsix`, and
 publishes to the Marketplace and Open VSX when they are set up:
 
-- Marketplace, preferred: Microsoft Entra sign-in with no stored token. Set repository
-  variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` for an app registration that has a
-  federated credential for this repository's `release` environment (subject
-  `repo:Civ13@41390861/byond-devtools@1449711083:environment:release`, GitHub's ID form) and is a Contributor on the `civ13`
-  publisher. The `VSCE_PAT` secret is used only when those variables are missing; global
-  personal access tokens stop working on 2026-12-01.
+- Marketplace: Microsoft Entra sign-in with no stored token. Repository variables
+  `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` name an app registration with a federated credential
+  for this repository's `release` environment (subject
+  `repo:Civ13@41390861/byond-devtools@1449711083:environment:release`, GitHub's ID form).
 - Open VSX: secret `OVSX_PAT` (an access token from open-vsx.org). The first release
   creates the `civ13` namespace.
 
@@ -248,8 +246,9 @@ node src/cli.js edit --root /path/to/Civ13 --map maps/x.dmm --patch patch.json -
 - Only the edited grid keys change, plus new dictionary entries for new stacks. New entries
   take the lowest free key and go in key order, in the file's own DMM or TGM style and line
   endings; an existing identical stack is reused. Unused entries are kept and reported as
-  `orphanedKeys`. When every key of the current width is taken the edit is refused, since
-  widening keys would rewrite the whole grid.
+  `orphanedKeys`. When every key of the current width is taken, the map is first re-keyed one
+  character wider, as `resize` does (`widenedKeys: {from, to}` in the result); that rewrites
+  every key, so the diff is large, and every tile is still verified.
 - Overrides must be `name = value` pairs. A tile with two areas is refused (DreamMaker
   rejects it). Cells outside the existing blocks cannot be added; use `resize` for that.
 - The output is re-parsed: the world size, every old dictionary entry and every untouched
