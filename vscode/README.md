@@ -13,6 +13,12 @@ A custom editor for BYOND `.dmm` maps, built on
   everything except that type and its subtypes (e.g. `/obj/structure/door`). **animate** plays
   animated icon states (8 frames, 200 ms each, every state stepping by its own delays); editing
   works the same while it plays.
+- **compare with** a git revision (default `HEAD`; `master` or `origin/master` work too) dims
+  unchanged tiles and outlines changed ones: yellow modified, blue reordered, green added, red
+  removed. Unsaved edits count as changes. **Next change** centres the view on each changed tile
+  in turn and selects it.
+- **Show in text** (next to a selected tile's key) opens the `.dmm` beside the editor at that key's
+  definition.
 
 Editing:
 

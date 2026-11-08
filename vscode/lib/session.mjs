@@ -63,6 +63,50 @@ export async function openSession({ text, root, mapRelative, dme, treeFile, byon
       return c ? { x, y, z, key: c.key, atoms: c.atoms.map(a => ({ path: a.path, overrides: a.overridesRaw, raw: a.raw.trim(), vars: overrideAssignments(a.overridesRaw).map(v => ({ key: v.key, value: v.raw })) })) } : { x, y, z, key: null, atoms: [] };
     },
     /**
+     * Tiles that differ from the map at git revision `ref` (read-only git show of the saved
+     * file's path): {ref, changedCells, levels, cells (at most limit, map order), truncated}.
+     */
+    async changes({ ref = 'HEAD', limit = 500 } = {}) {
+      const { gitShow } = await load(core, 'diff-project.js'), { diffMaps } = await load(core, 'diff.js');
+      const before = parseDmm(gitShow(root, mapRelative, ref));
+      const d = diffMaps(before, current(), { limit });
+      return { ref, changedCells: d.changedCells, truncated: d.truncated, levels: d.levels, world: d.world,
+        cells: d.cells.map(c => ({ x: c.x, y: c.y, z: c.z, change: c.change, removed: c.removed.length, added: c.added.length })) };
+    },
+    /**
+     * Render a view against git revision `ref`: the current map with unchanged tiles dimmed
+     * and changed tiles outlined (yellow modified, blue reordered, green added, red removed).
+     * Same region and tile grid as render(), so tiles can still be clicked.
+     */
+    async compare({ x1, y1, x2, y2, z, ref = 'HEAD' }) {
+      const map = current(), w = map.world;
+      x1 = Math.max(1, x1); y1 = Math.max(1, y1); x2 = Math.min(w.maxX, x2); y2 = Math.min(w.maxY, y2);
+      if (x2 < x1 || y2 < y1 || z < 1 || z > w.maxZ) throw new RangeError('View is outside the map');
+      if ((x2 - x1 + 1) * (y2 - y1 + 1) > MAX_VIEW_TILES) throw new RangeError(`View is limited to ${MAX_VIEW_TILES} tiles`);
+      const r = await ensureRenderer();
+      if (!r) return { error: rendererError, region: { x1, y1, x2, y2, z } };
+      const { gitShow } = await load(core, 'diff-project.js'), { regionChanges, composeDiff } = await load(core, 'diff.js');
+      const { renderMap } = await load(core, 'render-project.js'), { encodePng } = await load(core, 'png.js');
+      const beforeText = gitShow(root, mapRelative, ref), region = { x1, y1, x2, y2, z };
+      const beforeMap = parseDmm(beforeText);
+      if (z > beforeMap.world.maxZ) throw new RangeError(`Level ${z} does not exist at ${ref}`);
+      const b = await renderMap(r, { root, mapText: beforeText, ...region }), a = await renderMap(r, { root, mapText: textOf(), ...region });
+      const changes = regionChanges(beforeMap, map, region), gap = 4;
+      const full = composeDiff(b.result, a.result, changes, region, r.iconSize, { gap });
+      // Keep only the highlight panel (the third), so the picture lines up with the tile grid.
+      const pw = a.result.width, ph = a.result.height, ox = (pw + gap) * 2, rgba = new Uint8Array(pw * ph * 4);
+      for (let y = 0; y < ph; y++) rgba.set(full.rgba.subarray((y * full.width + ox) * 4, (y * full.width + ox + pw) * 4), y * pw * 4);
+      const png = encodePng({ width: pw, height: ph, rgba }, { text: { Comment: `byond-devtools map compare with ${ref}: changed tiles outlined` } });
+      return { png: Buffer.from(png).toString('base64'), region, iconSize: r.iconSize, width: pw, height: ph, drawn: a.result.drawn,
+        diagnostics: a.result.diagnostics, truthLayer: a.result.truthLayer, mapPath: mapRelative, compare: { ref, changedTiles: changes.length } };
+    },
+    /** 1-based line of a dictionary key's definition in the current text, or null. */
+    keyLine(key) {
+      if (typeof key !== 'string' || !/^[A-Za-z]+$/.test(key)) return null;
+      const t = textOf(), at = t.search(new RegExp(`^"${key}" = \\(`, 'm'));
+      return at < 0 ? null : t.slice(0, at).split('\n').length;
+    },
+    /**
      * Render a view. Options: kinds (atom kinds to draw; default turf, obj, mob), focus (a type
      * path: everything else is dimmed), animate (an animated PNG of ANIMATION_FRAMES frames,
      * every animated icon state stepping by its own delays).

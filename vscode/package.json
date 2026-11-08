@@ -2,7 +2,7 @@
   "name": "byond-devtools-vscode",
   "displayName": "BYOND Map Editor",
   "description": "View and edit BYOND .dmm maps (rendered tiles from the native type tree; place, erase, stamp and move objects, edit vars, undo/redo, verified saves), plus DreamMaker compile errors in the Problems panel and local playtests.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "civ13",
   "license": "AGPL-3.0-only",
   "repository": {
