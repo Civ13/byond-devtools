@@ -1,5 +1,5 @@
 // BYOND Map Editor: a custom editor for .dmm files (rendered view, tile editing with undo,
-// saving through the safe-edit core), plus compile and local playtest commands. The text
+// saving through the safe-edit core), plus compile, local playtest and icon compare commands. The text
 // editor stays the default for .dmm. Compile runs DreamMaker in a temp folder; playtest asks
 // first, then runs the game locally.
 const vscode = require('vscode');
@@ -144,19 +144,22 @@ class MapEditorProvider {
     const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');
     panel.webview.options = { enableScripts: true, localResourceRoots: [media] };
     panel.webview.html = html(panel.webview, media);
-    const post = message => panel.webview.postMessage(message);
+    let record;
+    // record.status says how far the webview got (ready, renders asked, last error), so a test
+    // that waits for an image can say why none came.
+    const post = message => { if (record && message.type === 'error') record.status.lastError = message.message; return panel.webview.postMessage(message); };
     if (doc.error) { panel.webview.onDidReceiveMessage(m => { if (m.type === 'ready') post({ type: 'error', message: doc.error }); }); return; }
-    const record = { uri: doc.uri.toString(), doc, provider: this, panel, displayed: null };
+    record = { uri: doc.uri.toString(), doc, provider: this, panel, displayed: null, status: { ready: false, renders: 0, images: 0, lastError: null } };
     sessions.add(record); doc.panels.add(panel);
     panel.onDidDispose(() => { sessions.delete(record); doc.panels.delete(panel); });
     const session = doc.session;
     panel.webview.onDidReceiveMessage(async m => {
       try {
-        if (m.type === 'ready') { post({ type: 'summary', summary: session.summary() }); post({ type: 'types', paths: await session.typePaths() }); }
+        if (m.type === 'ready') { record.status.ready = true; post({ type: 'summary', summary: session.summary() }); post({ type: 'types', paths: await session.typePaths() }); }
         else if (m.type === 'inspect') post({ type: 'cell', cell: session.inspect(m.x, m.y, m.z) });
         else if (m.type === 'vars') post({ type: 'vars', path: m.path, vars: await session.varsOf(m.path) });
         else if (m.type === 'displayed') record.displayed = { width: m.width, height: m.height, error: m.error };
-        else if (m.type === 'render') post({ type: 'image', ...await (m.view.compare ? session.compare({ ...m.view, ref: m.view.compare }) : session.render(m.view)) });
+        else if (m.type === 'render') { record.status.renders++; const image = await (m.view.compare ? session.compare({ ...m.view, ref: m.view.compare }) : session.render(m.view)); record.status.images++; post({ type: 'image', ...image }); }
         else if (m.type === 'changes') post({ type: 'changes', ...await session.changes({ ref: m.ref }) });
         else if (m.type === 'reveal') await this.reveal(doc, m.key);
         else if (m.type === 'edit') { if (!await this.edit(doc, m)) post({ type: 'error', message: 'Nothing changed.' }); }
@@ -254,12 +257,42 @@ async function playtestCommand(options = {}) {
   return report;
 }
 
+const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+/** Compare a .dmi with a git revision, state by state, in a read-only panel (before | after | heatmap). */
+async function compareIconCommand(uri, ref) {
+  uri = uri || vscode.window.activeTextEditor?.document.uri;
+  if (!uri || !/\.dmi$/i.test(uri.fsPath)) { vscode.window.showWarningMessage('Pick a .dmi icon file first.'); return { error: 'not a .dmi' }; }
+  const folder = vscode.workspace.getWorkspaceFolder(uri);
+  if (!folder) { vscode.window.showWarningMessage('The icon must be inside an open workspace folder.'); return { error: 'outside the workspace' }; }
+  ref ??= await vscode.window.showInputBox({ prompt: 'Compare with which git revision?', value: 'HEAD', ignoreFocusOut: true });
+  if (!ref) return { cancelled: true };
+  const { coreDir } = await sessionLib();
+  const { loadIconDiff } = await import(pathToFileURL(path.join(coreDir(path.join(__dirname, 'lib')), 'diff-project.js')).href);
+  const { encodePng } = await import(pathToFileURL(path.join(coreDir(path.join(__dirname, 'lib')), 'png.js')).href);
+  const dmi = path.relative(folder.uri.fsPath, uri.fsPath).split(path.sep).join('/');
+  let d;
+  try { d = await loadIconDiff({ root: folder.uri.fsPath, dmi, gitRef: ref.trim() }); }
+  catch (e) { vscode.window.showWarningMessage(`Icon compare failed: ${e.message}`); return { error: e.message }; }
+  const panel = vscode.window.createWebviewPanel('byondDevtools.iconDiff', `${path.basename(dmi)} vs ${ref}`, vscode.ViewColumn.Active, { enableScripts: false });
+  const s = d.summary, png = d.image ? Buffer.from(encodePng(d.image)).toString('base64') : null;
+  const rows = d.states.filter(x => x.change !== 'same').map(x => `<tr class="${x.change}"><td>${escapeHtml(x.state || '(unnamed)')}${x.movement ? ' (movement)' : ''}</td><td>${x.change}</td><td>${escapeHtml(x.details)}</td></tr>`).join('');
+  panel.webview.html = `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline';">
+<style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:8px}img{image-rendering:pixelated;zoom:3;background:repeating-conic-gradient(#8884 0% 25%,transparent 0% 50%) 0 0/8px 8px}table{border-collapse:collapse;margin-top:8px}td{padding:2px 8px;border-bottom:1px solid var(--vscode-panel-border)}.added td:nth-child(2){color:var(--vscode-charts-green)}.removed td:nth-child(2){color:var(--vscode-charts-red)}</style></head><body>
+<p><b>${escapeHtml(dmi)}</b> compared with <b>${escapeHtml(ref)}</b>${d.before.existed === false ? ' (new since that revision)' : ''}: ${s.added} added, ${s.changed} changed, ${s.removed} removed, ${s.same} unchanged.</p>
+${png ? `<p>Each row is one state: before | after | heatmap (every dir down, every frame across)${s.rowsOmitted ? `; ${s.rowsOmitted} more rows not drawn` : ''}.</p><img alt="icon diff" src="data:image/png;base64,${png}">` : '<p>No state changed.</p>'}
+${rows ? `<table>${rows}</table>` : ''}</body></html>`;
+  return { summary: s, states: d.states, before: d.before, panel: true };
+}
+
 function activate(context) {
   diagnostics = vscode.languages.createDiagnosticCollection('byond');
   output = vscode.window.createOutputChannel('BYOND Playtest');
   context.subscriptions.push(diagnostics, output);
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.compile', compileCommand));
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.playtest', playtestCommand));
+  context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.compareIcon', uri => compareIconCommand(uri)));
   context.subscriptions.push(vscode.window.registerCustomEditorProvider(VIEW_TYPE, new MapEditorProvider(context), { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.openPreview', async uri => {
     uri = uri || vscode.window.activeTextEditor?.document.uri;
@@ -269,8 +302,9 @@ function activate(context) {
   // Test hook: lets the integration tests drive and inspect open previews.
   return {
     viewType: VIEW_TYPE,
+    compareIcon: (uri, ref) => compareIconCommand(uri, ref),
     diagnostics: () => { const out = []; diagnostics.forEach((uri, list) => out.push({ uri: uri.toString(), list: list.map(d => ({ line: d.range.start.line + 1, message: d.message, severity: d.severity })) })); return out; },
-    sessions: () => [...sessions].map(s => ({ uri: s.uri, summary: s.doc.session.summary(), displayed: s.displayed, inspect: (x, y, z) => s.doc.session.inspect(x, y, z), render: v => s.doc.session.render(v),
+    sessions: () => [...sessions].map(s => ({ uri: s.uri, summary: s.doc.session.summary(), displayed: s.displayed, status: { ...s.status, panelVisible: s.panel.visible, panelActive: s.panel.active }, inspect: (x, y, z) => s.doc.session.inspect(x, y, z), render: v => s.doc.session.render(v),
       edit: m => s.provider.edit(s.doc, m), text: () => s.doc.model.text, dirty: () => s.doc.model.isDirty(),
       compare: v => s.doc.session.compare(v), changes: o => s.doc.session.changes(o), reveal: key => s.provider.reveal(s.doc, key) })),
   };

@@ -48,3 +48,30 @@ test('icon-diff CLI writes the review PNG and exits 3 on changes', async () => {
     assert.equal(run('--before', 'none', '--after', 'none').status, 1);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('icon_diff (agent API) compares a .dmi with a git revision or another file', async () => {
+  const { createAgentApi } = await import('../src/agent-api.js');
+  const { mkdir } = await import('node:fs/promises');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bd-icondiff-git-'));
+  try {
+    const git = (...a) => { const r = spawnSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
+    git('init', '-q'); const proj = path.join(dir, 'proj'); await mkdir(path.join(proj, 'icons'), { recursive: true }); // project below the repo root
+    await writeFile(path.join(proj, 'icons', 'a.dmi'), dmi([{ name: 'a', colour: red }, { name: 'gone', colour: green }]));
+    git('add', '.'); git('commit', '-qm', 'base');
+    await writeFile(path.join(proj, 'icons', 'a.dmi'), dmi([{ name: 'a', colour: blue }, { name: 'new', colour: green }]));
+    await writeFile(path.join(proj, 'icons', 'b.dmi'), dmi([{ name: 'a', colour: red }]));
+    const api = createAgentApi({ root: proj });
+    const d = await api.call('icon_diff', { dmi: 'icons/a.dmi', scale: 2 });
+    assert.deepEqual([d.data.added, d.data.removed, d.data.changed], [1, 1, 1]);
+    assert.deepEqual(d.provenance.before, { source: 'git', ref: 'HEAD', existed: true });
+    assert.ok(d.png && decodePng(d.png).width === d.data.image.width && d.data.image.scale === 2);
+    // New since the revision: every state is added.
+    const fresh = await api.call('icon_diff', { dmi: 'icons/b.dmi' });
+    assert.equal(fresh.provenance.before.existed, false); assert.equal(fresh.data.added, 1);
+    // Against another file; identical files have no picture.
+    const other = await api.call('icon_diff', { dmi: 'icons/b.dmi', before: 'icons/b.dmi' });
+    assert.equal(other.data.same, 1); assert.equal(other.png, undefined); assert.equal(other.data.image, null);
+    await assert.rejects(api.call('icon_diff', { dmi: 'icons/a.dmi', git_ref: 'a..b' }), /Invalid git revision/);
+    await assert.rejects(api.call('icon_diff', { dmi: '../x.dmi' }), /escapes|ENOENT|no such/i);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

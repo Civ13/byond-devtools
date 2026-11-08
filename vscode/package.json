@@ -64,6 +64,11 @@
         "command": "byondDevtools.playtest",
         "title": "Start local playtest",
         "category": "BYOND"
+      },
+      {
+        "command": "byondDevtools.compareIcon",
+        "title": "Compare icon with git revision",
+        "category": "BYOND"
       }
     ],
     "menus": {
@@ -71,12 +76,20 @@
         {
           "command": "byondDevtools.openPreview",
           "when": "resourceExtname == .dmm"
+        },
+        {
+          "command": "byondDevtools.compareIcon",
+          "when": "resourceExtname == .dmi"
         }
       ],
       "editor/title": [
         {
           "command": "byondDevtools.openPreview",
           "when": "resourceExtname == .dmm"
+        },
+        {
+          "command": "byondDevtools.compareIcon",
+          "when": "resourceExtname == .dmi"
         }
       ]
     },

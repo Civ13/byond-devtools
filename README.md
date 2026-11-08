@@ -362,7 +362,7 @@ Or in a project's `.mcp.json`:
 - Tools: `map_summary`, `map_cell`, `map_find`, `map_render` (PNG image, at most 64x64 tiles),
   `map_lint`, `type_info`, `map_diff` (optionally rendered), `map_edit`, `prefab_extract`,
   `prefab_place`, `map_generators`, `map_check`, `project_compile`, `icon_info`, `icon_render`,
-  `image_compare`, `ingame_render` and `dump_render`. Inputs are validated against each tool's schema; unknown
+  `icon_diff`, `image_compare`, `ingame_render` and `dump_render`. Inputs are validated against each tool's schema; unknown
   arguments are refused. Failures come back as tool errors the model can read.
 - Every PNG tool takes `scale` (1-8, nearest neighbour), `background` (`#rrggbb[aa]` or
   `transparent`), `inline` (false leaves the image out of the reply) and `file` (true writes it to
@@ -375,6 +375,9 @@ Or in a project's `.mcp.json`:
   (project-relative, or a `file: true` output) with another PNG or a fresh static render and
   returns the differing pixel count, bounds and max/mean delta over a `threshold`, with a
   reference | candidate | heatmap image.
+- `icon_diff` compares a `.dmi` with its version at a git revision (default `HEAD`) or with another
+  `.dmi`, state by state (added, removed, changed size, dirs, frames, delays or pixels), with one
+  before | after | heatmap row per changed state. It is the `icon-diff` CLI for agents.
 - Animated PNGs (APNG; viewers without APNG show frame 1): `icon_render` with `animate: true`
   plays one state in one dir with its own delays, `rewind` and `loop` count; `map_render` with
   `animate: {frames: 2-60, interval_ms}` renders the region at each interval, every animated

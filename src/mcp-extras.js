@@ -16,7 +16,8 @@ authored source plus compiled type defaults, not client screenshots.
 
 - Look: map_summary, map_cell, map_find; map_render for a picture (at most 64x64 tiles).
   Filter by kinds/types (hide or dim), outline tiles with boxes, animate for an APNG.
-- Icons: icon_info for states, icon_render for one frame, a sheet or an animation.
+- Icons: icon_info for states, icon_render for one frame, a sheet or an animation; icon_diff to
+  compare a .dmi with a git revision (before | after | heatmap per changed state).
 - Types: type_info for a type's vars and source; map_lint for unknown types and vars.
 - Change a map: prefab_place or your own patch, preview with map_diff (render: true), check with
   map_check, then map_edit with apply: true (needs --allow-write). A patch carries the map's

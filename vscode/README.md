@@ -19,6 +19,9 @@ A custom editor for BYOND `.dmm` maps, built on
   in turn and selects it.
 - **Show in text** (next to a selected tile's key) opens the `.dmm` beside the editor at that key's
   definition.
+- **BYOND: Compare icon with git revision** (right-click a `.dmi`, or the editor title bar) shows
+  which states were added, removed or changed since a revision (default `HEAD`) and draws each
+  changed state as before | after | heatmap, every dir down and every frame across.
 
 Editing:
 
