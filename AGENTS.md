@@ -7,7 +7,7 @@
   them with a source diagnostic; never silently drop map content.
 - Preserve original text, ordered stacks, duplicate objects and variable overrides.
 - Map writes go only through `src/edit.js` (pure) and `src/edit-project.js` (atomic apply);
-  never write a map any other way. No live-server operations or save migration. The only game boots are `src/ingame.js` and `playtest` in `src/devrun-project.js`
+  never write a map any other way. The VS Code editor saves through `editMapFile` too. No live-server operations or save migration. The only game boots are `src/ingame.js` and `playtest` in `src/devrun-project.js`
   (temp folder, -safe, 127.0.0.1, no saves), and only when the user asked for an in-game render or a playtest. Native BYOND runs are limited to `src/native.js` stub projects
   (generated types, `-safe`, temp directory); they never run game code. `DreamMaker -o`
   for the type tree runs from a temp probe so nothing is written into the project.

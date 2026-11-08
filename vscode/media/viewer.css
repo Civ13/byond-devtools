@@ -2,7 +2,16 @@ body { margin: 0; padding: 0; color: var(--vscode-foreground); background: var(-
 header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); }
 header input { width: 5em; } #title { font-weight: 600; } #status { opacity: 0.8; }
 main { display: flex; gap: 10px; padding: 10px; min-height: 0; }
-#view { flex: 1; overflow: auto; } #view img { image-rendering: pixelated; max-width: 100%; cursor: crosshair; }
+#view { flex: 1; overflow: auto; } #view img { image-rendering: pixelated; max-width: 100%; cursor: crosshair; display: block; }
 aside { width: 320px; flex: none; } pre { white-space: pre-wrap; word-break: break-all; font-family: var(--vscode-editor-font-family); }
 input, select, button { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
 button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 2px 10px; cursor: pointer; }
+#view { position: relative; } #view .stage { position: relative; width: fit-content; max-width: 100%; } #overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+.tools button { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.tools button.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+button.secondary, button.small { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.small { padding: 0 6px; } button:disabled { opacity: 0.5; cursor: default; }
+#brush { width: 22em; } #cell { font-family: var(--vscode-editor-font-family); }
+.atom { border: 1px solid var(--vscode-panel-border); padding: 4px; margin: 4px 0; }
+.row { display: flex; gap: 4px; align-items: center; margin: 2px 0; } .row .path { flex: 1; min-width: 0; }
+.row.var { padding-left: 12px; } .row .key { width: 8em; } .row .value { flex: 1; min-width: 0; } .actions { margin-top: 6px; } .where { opacity: 0.8; margin-bottom: 4px; }

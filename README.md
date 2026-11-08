@@ -3,14 +3,13 @@
 A dependency-free toolkit for trustworthy BYOND map work, shared by people and agents:
 inspection, a native type tree, static and in-game rendering, safe copy-on-write edits,
 diffs, prefabs, generator-aware inspection, spatial contracts, an agent API/MCP server and
-native compile/playtest capture, plus a read-only VS Code map preview. Every layer says what
-it was checked against (see [verification](docs/verification.md)). It is not a visual map
-editor.
+native compile/playtest capture, plus a VS Code map editor. Every layer says what
+it was checked against (see [verification](docs/verification.md)).
 
 ## Install
 
-- **VS Code:** install [BYOND Map Preview](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode)
-  from the Marketplace (search "BYOND Map Preview" in the Extensions panel), then set
+- **VS Code:** install [BYOND Map Editor](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode)
+  from the Marketplace (search "BYOND Map Editor", formerly "BYOND Map Preview", in the Extensions panel), then set
   `byondDevtools.byondBin` to your BYOND `bin` folder. The `.vsix` is also attached to each
   [GitHub release](https://github.com/Civ13/byond-devtools/releases).
 - **CLI:** clone this repository and run `node src/cli.js` with Node.js 22+. There is
@@ -83,7 +82,7 @@ All phases are merged and released as v0.1.0:
 
 1. Strict read-only inspection, provenance and source-preserving observation fixtures (done).
 2. Native type tree, DMI decoding and coordinate-linked static rendering (done).
-3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
+3. VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`; editing since v0.2.0).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
 5. Prefabs, generator-aware tools, spatial contracts and a local agent API/MCP server (done).
@@ -184,10 +183,13 @@ node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-
   shadow), maptext, `vis_contents`, animation past frame 1, `KEEP_TOGETHER` groups,
   `client.color` and screen objects.
 
-## VS Code preview
+## VS Code map editor
 
-`vscode/` is a read-only custom editor for `.dmm` files: rendered views with the static
-renderer, tile inspection and diagnostics. CI runs its integration suite inside real VS Code
+`vscode/` is a custom editor for `.dmm` files: rendered views with the static renderer,
+tile inspection and diagnostics, and editing (place, erase, stamp and move objects, edit a
+tile's stack and var overrides, undo/redo). Every change is a whole-stack edit planned by
+`src/edit.js`, and Save writes one patch through `src/edit-project.js` (base sha256,
+expected stacks, verification, atomic replace), so a map changed on disk is never overwritten. CI runs its integration suite inside real VS Code
 Stable and Insiders on Linux and Windows. It is published on the
 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode)
 as `civ13.byond-devtools-vscode`. See [vscode/README.md](vscode/README.md).
