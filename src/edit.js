@@ -87,10 +87,56 @@ function rowOffsets(source, block) {
 }
 
 /**
- * Plan an edit. Returns {text, changes, newKeys, reusedKeys, orphanedKeys, inverse, verified}.
+ * The same map with every dictionary key one character wider: each key keeps its number
+ * (so its order) and gains a leading "a", in the dictionary and the grid. Checked cell by cell.
+ */
+export function widenKeys(source, map = parseDmm(source)) {
+  const width = map.keyWidth, wide = k => numToKey(keyToNum(k), width + 1);
+  const edits = [];
+  for (const d of map.definitions) {
+    if (source.slice(d.span.start, d.span.start + width + 2) !== `"${d.key}"`) throw new EditError(`Dictionary entry ${d.key} not understood`);
+    edits.push([d.span.start + 1, d.span.start + 1 + width, wide(d.key)]);
+  }
+  for (const b of map.blocks) {
+    const open = source.indexOf('{"', b.span.start) + 2, close = source.indexOf('"}', open);
+    const body = source.slice(open, close);
+    const text = body.replace(/[A-Za-z]+/g, row => row.match(new RegExp(`.{${width}}`, 'g')).map(wide).join(''));
+    edits.push([open, close, text]);
+  }
+  edits.sort((p, q) => p[0] - q[0]);
+  let out = '', at = 0;
+  for (const [start, end, text] of edits) { out += source.slice(at, start) + text; at = end; }
+  out += source.slice(at);
+  const after = parseDmm(out);
+  if (after.diagnostics.length || after.keyWidth !== width + 1) throw new EditError('Verification failed: widened map does not parse');
+  const before = new Map(map.definitions.map(d => [wide(d.key), d.atoms.map(a => a.raw).join('\0')]));
+  for (const d of after.definitions) if (before.get(d.key) !== d.atoms.map(a => a.raw).join('\0')) throw new EditError(`Verification failed: widened entry ${d.key} changed`);
+  const old = new Map([...map.cells()].map(c => [`${c.x},${c.y},${c.z}`, wide(c.key)]));
+  let n = 0;
+  for (const c of after.cells()) { n++; if (old.get(`${c.x},${c.y},${c.z}`) !== c.key) throw new EditError(`Verification failed: widened cell ${c.x},${c.y},${c.z}`); }
+  if (n !== old.size) throw new EditError('Verification failed: widened cell count changed');
+  return out;
+}
+
+/**
+ * Plan an edit. Returns {text, changes, newKeys, reusedKeys, orphanedKeys, inverse, verified}, plus
+ * widenedKeys {from, to} when every key was taken and the map was re-keyed one character wider.
  * Throws EditError (with `edit` index where relevant) and changes nothing on any failure.
  */
-export function planEdit(source, patch, { maxEdits = 10000 } = {}) {
+export function planEdit(source, patch, options = {}) {
+  try {
+    return planEditAtWidth(source, patch, options);
+  } catch (err) {
+    if (!err?.keysFull) throw err;
+    // Every key of this width is taken: re-key the map one character wider and plan again.
+    const map = parseDmm(source);
+    if (maxKeys(map.keyWidth + 1) <= map.definitions.length) throw new EditError(err.message.replace('; widening', ' (the map has the most entries BYOND allows);'));
+    const plan = planEditAtWidth(widenKeys(source, map), patch, options);
+    return { ...plan, widenedKeys: { from: map.keyWidth, to: map.keyWidth + 1 } };
+  }
+}
+
+function planEditAtWidth(source, patch, { maxEdits = 10000 } = {}) {
   const map = parseDmm(source);
   if (map.diagnostics.length) throw new EditError('Map has parser diagnostics; fix them before editing', { diagnostics: map.diagnostics });
   const edits = patch?.edits;
@@ -120,7 +166,7 @@ export function planEdit(source, patch, { maxEdits = 10000 } = {}) {
     let key = byStack.get(compactStack(canonical)) ?? newDefs.get(stack)?.key;
     if (!key) {
       while (nextFree < maxKeys(width) && used.has(numToKey(nextFree, width))) nextFree++;
-      if (nextFree >= maxKeys(width)) fail(`no free ${width}-character dictionary key; widening keys would rewrite the whole grid`);
+      if (nextFree >= maxKeys(width)) { const err = new EditError(`Edit ${i}: no free ${width}-character dictionary key; widening rewrites every key`, { edit: i }); err.keysFull = true; throw err; }
       key = numToKey(nextFree, width); used.add(key); newDefs.set(stack, { key, atoms: canonical });
     }
     changes.push({ x: e.x, y: e.y, z: e.z, oldKey: cell.key, newKey: key, old: cell.atoms.map(a => a.raw.trim()), set: e.set });

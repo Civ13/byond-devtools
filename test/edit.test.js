@@ -51,10 +51,18 @@ test('stale or unsafe patches fail and change nothing', () => {
   fails({ ...edit(), maxEdits: 0 }, /limit is 0/);
   fails({ edits: [] }, /no edits/);
 });
-test('a full key space is refused rather than widening every key', () => {
+test('a full key space is widened one character, keeping every other tile', () => {
   const keys = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const text = [...keys].map((k, i) => `"${k}" = (/turf/t${i},/area/a)`).join('\n') + `\n(1,1,1) = {"\n${keys}\n"}\n`;
-  assert.throws(() => planEdit(text, { edits: [{ x: 1, y: 1, z: 1, expect: ['/turf/t0', '/area/a'], set: ['/turf/new', '/area/a'] }] }), /no free 1-character dictionary key/);
+  const r = planEdit(text, { edits: [{ x: 1, y: 1, z: 1, expect: ['/turf/t0', '/area/a'], set: ['/turf/new', '/area/a'] }] });
+  assert.deepEqual(r.widenedKeys, { from: 1, to: 2 }); assert.deepEqual(r.newKeys, ['ba']);
+  assert.deepEqual(r.changes, [{ x: 1, y: 1, z: 1, oldKey: 'aa', newKey: 'ba' }]); assert.deepEqual(r.orphanedKeys, ['aa']);
+  const after = parseDmm(r.text);
+  assert.equal(after.keyWidth, 2); assert.equal(after.inspectCell(1, 1, 1).atoms[0].raw, '/turf/new');
+  for (let x = 2; x <= 52; x++) assert.equal(after.inspectCell(x, 1, 1).atoms[0].raw, `/turf/t${x - 1}`);
+  // The inverse patch restores the stacks (on the widened map).
+  const back = planEdit(r.text, r.inverse);
+  assert.equal(parseDmm(back.text).inspectCell(1, 1, 1).atoms[0].raw, '/turf/t0');
 });
 test('file apply: base hash, dry run, atomic replace, BOM kept, no temp files left', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'edit-file-')), file = path.join(dir, 'm.dmm');
