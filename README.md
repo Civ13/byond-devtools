@@ -17,8 +17,9 @@ it was checked against (see [verification](docs/verification.md)).
 
 Current release: [v0.4.0](https://github.com/Civ13/byond-devtools/releases/tag/v0.4.0): the VS Code editor compares a map
 with a git revision (changed tiles outlined, Next change) and opens a tile's definition in the text;
-the MCP server gains `dump_render` (live views such as Civ13's `character_view`), resources and
-prompts, and the CLI gains `icon-diff` for sprite review. v0.3.0 added kind toggles, type
+the MCP server gains `dump_render` (live views such as Civ13's `character_view`, with screen
+objects, snapshots over time and a list of clickable atoms that draw nothing), `icon_diff`,
+resources and prompts, and the CLI gains `icon-diff` for sprite review. v0.3.0 added kind toggles, type
 highlighting, animated states, icon renders, animated PNGs, image comparison and in-game renders
 (see [Agent API (MCP)](#agent-api-mcp)).
 
@@ -187,7 +188,13 @@ node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-
   of a living player.
 - Not modelled, counted in the report: filters (including the client's ambient-occlusion
   shadow), maptext, `vis_contents`, animation past frame 1, `KEEP_TOGETHER` groups,
-  `client.color` and screen objects.
+  `client.color` and screen objects on secondary maps.
+- A dump may carry `screen` (`[appearance, screen_loc]` pairs from `client.screen`) with `view`
+  (client.view) and `center`: screen objects are placed by `screen_loc` (numbers, WEST/EAST/NORTH/
+  SOUTH/CENTER with offsets, `:pixel` offsets, `a to b` ranges) and sorted into the same planes.
+- The result lists `undrawn`: visible, clickable movables (`mouse_opacity` not 0) whose whole
+  appearance tree put no pixel on the map, so an object a player can interact with but cannot
+  see shows up as a finding.
 
 ## VS Code map editor
 
@@ -388,7 +395,9 @@ Or in a project's `.mcp.json`:
 - `dump_render` draws an appearance dump in the same format without booting anything, such as a
   live Civ13 character's view (`character_view`). Its icons are inline base64 (runtime icons) or
   project-relative `source` paths read from `--root`; a missing one is a `missing-icon`
-  diagnostic. The CLI does the same with `ingame --dump FILE.json --out FILE.png`.
+  diagnostic. With `dumps` (snapshots over time) instead of `dump` it returns an animated PNG,
+  one frame per dump every `interval_ms`. The CLI does the same with
+  `ingame --dump FILE.json[,FILE2.json...] --out FILE.png [--interval-ms N]`.
 - Read-only by default. `map_edit` with `apply: true` needs `--allow-write`, and then still
   requires the patch's base sha256 and expected stacks, verifies the result, and refuses the
   write if an optional `contract` fails. Read-only tools are annotated `readOnlyHint`.

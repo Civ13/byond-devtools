@@ -170,6 +170,15 @@ test('dump_render draws a live appearance dump from inline and project icons', a
     assert.equal(decodePng(Buffer.from(r.content[1].data, 'base64')).width, 64);
     assert.match((await s.call('dump_render', { dump: { ...dump, region: [1, 1, 99, 99, 1] } })).json.message, /at most 4096 tiles/);
     assert.match((await s.call('dump_render', { dump: { ...dump, icons: [{ source: '../../etc/passwd' }] } })).json.data.diagnostics.map(d => d.code).join(), /missing-icon/);
+    // The /obj/thing with a missing icon is clickable and drew nothing.
+    assert.deepEqual(r.json.data.undrawn, [{ x: 1, y: 1, type: '/obj/thing' }]);
+    // Several snapshots: an animated PNG, padded to the largest frame.
+    const moved = { ...dump, region: [1, 1, 1, 1, 1], cells: [dump.cells[0]] };
+    const anim = await s.call('dump_render', { dumps: [dump, moved], interval_ms: 500 });
+    assert.equal(anim.isError, false, JSON.stringify(anim.json));
+    assert.deepEqual(anim.json.data.image.animation, { frames: 2, delaysMs: [500, 500], plays: 0, format: 'apng' });
+    assert.equal(apngInfo(Buffer.from(anim.content[1].data, 'base64')).frames, 2);
+    assert.match((await s.call('dump_render', {})).json.message, /exactly one of dump or dumps/);
   } finally { await s.close(); }
 });
 
