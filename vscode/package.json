@@ -5,28 +5,89 @@
   "version": "0.1.0",
   "publisher": "civ13",
   "license": "AGPL-3.0-only",
-  "repository": { "type": "git", "url": "https://github.com/Civ13/byond-devtools" },
-  "engines": { "vscode": "^1.90.0" },
-  "categories": ["Visualization", "Other"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Civ13/byond-devtools"
+  },
+  "homepage": "https://github.com/Civ13/byond-devtools/tree/main/vscode#readme",
+  "bugs": {
+    "url": "https://github.com/Civ13/byond-devtools/issues"
+  },
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#3b3226",
+    "theme": "dark"
+  },
+  "keywords": [
+    "byond",
+    "dream maker",
+    "dmm",
+    "map",
+    "ss13",
+    "civ13"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
   "main": "./extension.cjs",
   "activationEvents": [],
   "contributes": {
     "customEditors": [
-      { "viewType": "byondDevtools.mapPreview", "displayName": "BYOND Map Preview", "selector": [{ "filenamePattern": "*.dmm" }], "priority": "option" }
+      {
+        "viewType": "byondDevtools.mapPreview",
+        "displayName": "BYOND Map Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.dmm"
+          }
+        ],
+        "priority": "option"
+      }
     ],
     "commands": [
-      { "command": "byondDevtools.openPreview", "title": "Open BYOND Map Preview", "category": "BYOND" }
+      {
+        "command": "byondDevtools.openPreview",
+        "title": "Open BYOND Map Preview",
+        "category": "BYOND"
+      }
     ],
     "menus": {
-      "explorer/context": [{ "command": "byondDevtools.openPreview", "when": "resourceExtname == .dmm" }],
-      "editor/title": [{ "command": "byondDevtools.openPreview", "when": "resourceExtname == .dmm" }]
+      "explorer/context": [
+        {
+          "command": "byondDevtools.openPreview",
+          "when": "resourceExtname == .dmm"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "byondDevtools.openPreview",
+          "when": "resourceExtname == .dmm"
+        }
+      ]
     },
     "configuration": {
       "title": "BYOND Map Preview",
       "properties": {
-        "byondDevtools.byondBin": { "type": "string", "default": "", "description": "BYOND bin folder (with DreamMaker/dm.exe). Used to read the project's type tree with DreamMaker -o.", "scope": "machine-overridable" },
-        "byondDevtools.typeTree": { "type": "string", "default": "", "description": "A saved type tree (DreamMaker -o output) to use instead of running DreamMaker. Relative to the workspace folder." },
-        "byondDevtools.dme": { "type": "string", "default": "", "description": "The project .dme, relative to the workspace folder. Default: the only .dme at the folder root." }
+        "byondDevtools.byondBin": {
+          "type": "string",
+          "default": "",
+          "description": "BYOND bin folder (with DreamMaker/dm.exe). Used to read the project's type tree with DreamMaker -o.",
+          "scope": "machine-overridable"
+        },
+        "byondDevtools.typeTree": {
+          "type": "string",
+          "default": "",
+          "description": "A saved type tree (DreamMaker -o output) to use instead of running DreamMaker. Relative to the workspace folder."
+        },
+        "byondDevtools.dme": {
+          "type": "string",
+          "default": "",
+          "description": "The project .dme, relative to the workspace folder. Default: the only .dme at the folder root."
+        }
       }
     }
   },
