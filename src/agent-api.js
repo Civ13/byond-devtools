@@ -22,8 +22,8 @@ import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { findGenerators, GENERATOR_PROFILES } from './generators.js';
 import { checkContract, validateContract, needsTypes, densityResolver } from './contracts.js';
 import { compileProject } from './devrun-project.js';
-import { decodeDmi, DIR_ORDER } from './dmi.js';
-import { decodePng, encodePng } from './png.js';
+import { decodeDmi, DIR_ORDER, frameSequence } from './dmi.js';
+import { decodePng, encodePng, encodeApng } from './png.js';
 import { recordIngame, PROFILES } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { parseBackground, withBackground, scaleImage, drawBoxes, frameSheet, sideBySide, compareImages, ImageInputError } from './image.js';
@@ -53,6 +53,8 @@ const filters = {
   filter_mode: { enum: ['hide', 'dim'], description: 'What happens to atoms the filters leave out (default hide)' },
 };
 const boxes = { type: 'array', maxItems: 100, description: 'Outlined tile rectangles: [{x, y, width?, height?, color?}] in map coordinates', items: { type: 'object' } };
+const animateMap = { type: 'object', description: 'Animated PNG of the region: {frames: 2-60, interval_ms: 10-10000 (default 100)}; every animated icon state plays from the same start, by its own delays' };
+const MAX_ANIMATION_PIXELS = 64 * 1024 * 1024;
 const regionProps = { ...region, map: { type: 'string', description: 'Project-relative .dmm path for a static render' } };
 
 /** Tool definitions: name, description, inputSchema, annotations. */
@@ -60,9 +62,9 @@ export const TOOLS = Object.freeze([
   { name: 'map_summary', description: 'World size, levels, dictionary size, diagnostics and the most used types of a map (authored source).', inputSchema: obj(mapArg, ['map']), annotations: { readOnlyHint: true } },
   { name: 'map_cell', description: 'The authored atom stack of one tile, with raw override text.', inputSchema: obj({ ...mapArg, x: int, y: int, z: int }, ['map', 'x', 'y', 'z']), annotations: { readOnlyHint: true } },
   { name: 'map_find', description: 'Tiles holding a type (optionally subtypes), paginated.', inputSchema: obj({ ...mapArg, type: { type: 'string' }, subtypes: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 10000 }, offset: { type: 'integer', minimum: 0 } }, ['map', 'type']), annotations: { readOnlyHint: true } },
-  { name: 'map_render', description: 'Static PNG preview of a region (authored source + compiled type defaults, not a client screenshot). At most 64x64 tiles. Filters hide or dim atoms by kind or type; boxes outline tiles.', inputSchema: obj({ ...mapArg, ...region, grid: { type: 'integer', minimum: 0 }, show_invisible: { type: 'boolean' }, ...filters, boxes, ...output }, ['map', 'x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true } },
+  { name: 'map_render', description: 'Static PNG preview of a region (authored source + compiled type defaults, not a client screenshot). At most 64x64 tiles. Filters hide or dim atoms by kind or type; boxes outline tiles; animate makes an animated PNG.', inputSchema: obj({ ...mapArg, ...region, grid: { type: 'integer', minimum: 0 }, show_invisible: { type: 'boolean' }, ...filters, boxes, animate: animateMap, ...output }, ['map', 'x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true } },
   { name: 'icon_info', description: 'A DMI\'s size, states, dirs, frames and delays.', inputSchema: obj({ dmi: { type: 'string', description: 'Project-relative .dmi or .png' } }, ['dmi']), annotations: { readOnlyHint: true } },
-  { name: 'icon_render', description: 'PNG of one icon state: one dir and frame, or with sheet a grid of every dir (rows) by frame (columns). Give dmi + state, or a type to draw its default icon, state and dir.', inputSchema: obj({ dmi: { type: 'string' }, type: { type: 'string' }, state: { type: 'string' }, dir: { enum: Object.keys(DIRS) }, frame: { type: 'integer', minimum: 1 }, movement: { type: 'boolean' }, sheet: { type: 'boolean' }, ...output }), annotations: { readOnlyHint: true } },
+  { name: 'icon_render', description: 'PNG of one icon state: one dir and frame, with animate an animated PNG, or with sheet a grid of every dir (rows) by frame (columns). Give dmi + state, or a type to draw its default icon, state and dir.', inputSchema: obj({ dmi: { type: 'string' }, type: { type: 'string' }, state: { type: 'string' }, dir: { enum: Object.keys(DIRS) }, frame: { type: 'integer', minimum: 1 }, movement: { type: 'boolean' }, sheet: { type: 'boolean' }, animate: { type: 'boolean', description: 'Animated PNG of the state in this dir with its own delays, rewind and loop count' }, ...output }), annotations: { readOnlyHint: true } },
   { name: 'image_compare', description: 'Compare a PNG reference with a candidate (another PNG, or a static render of map + region). Returns differing pixel counts and bounds, and optionally a side | heatmap PNG.', inputSchema: obj({ reference: { type: 'string', description: 'Project-relative PNG, or a path this server wrote with file: true' }, candidate: { type: 'string', description: 'PNG path as for reference; omit to render map + region' }, ...regionProps, ...filters, threshold: { type: 'integer', minimum: 0, maximum: 255 }, show: { enum: ['side', 'heatmap', 'none'] }, ...output }, ['reference']), annotations: { readOnlyHint: true } },
   { name: 'ingame_render', description: 'Boot the game headless (RUNS GAME CODE in a temp folder: -safe, 127.0.0.1, no saves) and render the initialized world: runtime icons, overlays, colour matrices, planes and lighting. Needs the server started with --allow-game. Slow (a full compile and boot). At most 64x64 tiles.', inputSchema: obj({ ...region, map: { type: 'string', description: 'Optional map to select instead of the .dme\'s own' }, profile: { enum: PROFILES }, time_of_day: { type: 'string' }, boxes, ...output }, ['x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true, openWorldHint: false } },
   { name: 'map_lint', description: 'Unknown types and overrides of undeclared vars, from the native type tree.', inputSchema: obj(mapArg, ['map']), annotations: { readOnlyHint: true } },
@@ -109,7 +111,26 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
   if (!root) throw new Error('root is required');
   const outRoot = path.resolve(outDir);
   /** Apply background, boxes and scale; return {png?, image}. Boxes are tile rects relative to the region. */
-  async function finish(img, opts, { comment, region: reg, iconSize } = {}) {
+  async function finish(img, opts, ctx = {}) { const out = prepare(img, opts, ctx); return emit(encodePng(out, { text: ctx.comment ? { Comment: ctx.comment } : {} }), out, opts); }
+  /** Animated PNG from equally sized frames; delaysMs per frame, plays 0 = forever. */
+  async function finishAnimation(imgs, delaysMs, plays, opts, ctx = {}) {
+    const frames = imgs.map(img => prepare(img, opts, ctx)), first = frames[0];
+    if (first.width * first.height * frames.length > MAX_ANIMATION_PIXELS) throw new ToolInputError('Animation pixel limit exceeded; use fewer frames, a smaller region or a lower scale');
+    const png = encodeApng(frames.map(f => f.rgba), { width: first.width, height: first.height, delaysMs, plays, text: ctx.comment ? { Comment: ctx.comment } : {} });
+    const out = await emit(png, first, opts);
+    out.image.animation = { frames: frames.length, delaysMs, plays, format: 'apng' };
+    return out;
+  }
+  async function emit(png, img, opts) {
+    const image = { width: img.width, height: img.height, scale: opts.scale ?? 1 };
+    if (opts.file) {
+      await mkdir(outRoot, { recursive: true });
+      image.file = path.join(outRoot, createHash('sha256').update(png).digest('hex').slice(0, 24) + '.png');
+      await writeFile(image.file, png);
+    }
+    return { png: opts.inline === false ? undefined : png, image };
+  }
+  function prepare(img, opts, { region: reg, iconSize } = {}) {
     let out = withBackground(img, parseBackground(opts.background));
     if (opts.boxes?.length) {
       if (!reg) throw new ToolInputError('boxes need a map region');
@@ -123,13 +144,7 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       }));
     }
     try { out = scaleImage(out, opts.scale ?? 1); } catch (e) { if (e instanceof ImageInputError) throw new ToolInputError(e.message); throw e; }
-    const png = encodePng(out, { text: comment ? { Comment: comment } : {} }), image = { width: out.width, height: out.height, scale: opts.scale ?? 1 };
-    if (opts.file) {
-      await mkdir(outRoot, { recursive: true });
-      image.file = path.join(outRoot, createHash('sha256').update(png).digest('hex').slice(0, 24) + '.png');
-      await writeFile(image.file, png);
-    }
-    return { png: opts.inline === false ? undefined : png, image };
+    return out;
   }
   /** A PNG from the project (contained) or from this server's output folder. */
   async function readImage(file) {
@@ -145,9 +160,9 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
   const filterOf = a => (a.kinds || a.exclude_kinds || a.types || a.exclude_types || a.filter_mode)
     ? { kinds: a.kinds, excludeKinds: a.exclude_kinds, types: a.types, excludeTypes: a.exclude_types, mode: a.filter_mode ?? 'hide' } : null;
   const checkRegion = ({ x1, y1, x2, y2 }) => { if (x2 < x1 || y2 < y1 || (x2 - x1 + 1) * (y2 - y1 + 1) > 64 * 64) throw new ToolInputError('Region must be non-empty and at most 64x64 tiles'); };
-  async function staticRender(a) {
+  async function staticRender(a, timeDs = null) {
     checkRegion(a);
-    const r = await renderer(); const out = await renderMap(r, { root, map: a.map, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, z: a.z, grid: a.grid ?? 0, showInvisible: !!a.show_invisible, filter: filterOf(a), maxTiles: 64 * 64 });
+    const r = await renderer(); const out = await renderMap(r, { root, map: a.map, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, z: a.z, grid: a.grid ?? 0, showInvisible: !!a.show_invisible, filter: filterOf(a), timeDs, maxTiles: 64 * 64 });
     return { out, iconSize: r.iconSize };
   }
   let rendererPromise = null;
@@ -171,6 +186,17 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
     async map_cell({ map, x, y, z }) { const { input, parsed } = await readMap(map); const c = parsed.inspectCell(x, y, z); return { provenance: provenance(map, input), data: c ? { x, y, z, key: c.key, atoms: c.atoms.map(a => ({ path: a.path, overrides: a.overridesRaw, raw: a.raw.trim() })) } : { x, y, z, hole: true } }; },
     async map_find({ map, type, subtypes = false, limit = 100, offset = 0 }) { const { input, parsed } = await readMap(map); return { provenance: provenance(map, input), data: parsed.find(type, { includeSubtypes: subtypes, limit, offset }) }; },
     async map_render(a) {
+      if (a.animate) {
+        const { frames, interval_ms: interval = 100, ...rest } = a.animate;
+        if (Object.keys(rest).length) throw new ToolInputError(`animate takes frames and interval_ms, not ${Object.keys(rest).join(', ')}`);
+        if (!Number.isSafeInteger(frames) || frames < 2 || frames > 60) throw new ToolInputError('animate.frames must be an integer from 2 to 60');
+        if (!Number.isSafeInteger(interval) || interval < 10 || interval > 10000) throw new ToolInputError('animate.interval_ms must be an integer from 10 to 10000');
+        const renders = [];
+        for (let i = 0; i < frames; i++) renders.push(await staticRender(a, (i * interval) / 100));
+        const { out, iconSize } = renders[0];
+        const { png, image } = await finishAnimation(renders.map(r => r.out.result), renders.map(() => interval), 0, a, { comment: `byond-devtools static render (animated); ${out.result.truthLayer}; not a client screenshot`, region: a, iconSize });
+        return { provenance: out.provenance, data: { width: out.result.width, height: out.result.height, drawn: out.result.drawn, holes: out.result.holes, diagnostics: out.result.diagnostics, image }, png };
+      }
       const { out, iconSize } = await staticRender(a);
       const { png, image } = await finish(out.result, a, { comment: `byond-devtools static render; ${out.result.truthLayer}; not a client screenshot`, region: a, iconSize });
       return { provenance: out.provenance, data: { width: out.result.width, height: out.result.height, drawn: out.result.drawn, holes: out.result.holes, diagnostics: out.result.diagnostics, image }, png };
@@ -197,7 +223,16 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       state ??= ''; dir ??= 2;
       const st = icon.findState(state, { movement: !!a.movement });
       if (!st) throw new ToolInputError(`No ${a.movement ? 'movement ' : ''}state "${state}" in ${file}; states: ${icon.states.slice(0, 40).map(s => JSON.stringify(s.name)).join(', ')}`);
+      if (a.animate && a.sheet) throw new ToolInputError('Give animate or sheet, not both');
       let img;
+      if (a.animate) {
+        const seq = frameSequence(st);
+        const frames = seq.map(f => ({ width: icon.width, height: icon.height, rgba: icon.frame(st, dir, f.frame, { display: true }) }));
+        const { png, image } = await finishAnimation(frames, seq.map(f => f.delayDs * 100), st.loop > 0 ? st.loop : 0, a, { comment: `byond-devtools icon animation; ${file}:${state}` });
+        const dirNames = Object.fromEntries(Object.entries(DIRS).map(([k, v]) => [v, k]));
+        return { provenance: { dmi: file, sha256, type: a.type ?? null, truthLayer: 'authored-asset' },
+          data: { state, movement: st.movement, dirs: st.dirs, frames: st.frames, delay: st.delay, loop: st.loop, rewind: st.rewind, dir: dirNames[dir] ?? dir, sequence: seq, image }, png };
+      }
       if (a.sheet) {
         const frames = [];
         for (const d of DIR_ORDER.slice(0, st.dirs)) for (let f = 1; f <= st.frames; f++) frames.push(icon.frame(st, d, f));

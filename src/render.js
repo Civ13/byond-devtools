@@ -4,11 +4,13 @@
  *
  * Truth layer: authored source + compiled type defaults. It is NOT a client screenshot.
  * Not modelled: New()/Initialize() changes, smoothing/overlays added at runtime, lighting,
- * animations past frame 1, filters, transforms, planes' render relays, see_invisible.
+ * filters, transforms, planes' render relays, see_invisible. Animated states show frame 1, or the
+ * frame due at `timeDs` deciseconds when that is given (all animations started together).
  * Every atom that cannot be drawn exactly is counted in `diagnostics`, never silently skipped.
  */
 import { overrideAssignments } from './world.js';
 import { parseValue } from './typetree.js';
+import { frameAt } from './dmi.js';
 
 export const RENDER_VARS = Object.freeze(['icon', 'icon_state', 'dir', 'layer', 'plane', 'pixel_x', 'pixel_y', 'pixel_w', 'pixel_z', 'color', 'alpha', 'invisibility']);
 const DEFAULTS = Object.freeze({ icon: null, icon_state: '', dir: 2, layer: null, plane: 0, pixel_x: 0, pixel_y: 0, pixel_w: 0, pixel_z: 0, color: null, alpha: 255, invisibility: 0 });
@@ -58,7 +60,7 @@ function parseColor(value) {
  * Limits: at most `maxTiles` tiles and `maxPixels` output pixels.
  */
 export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance, icon, areas = false, showInvisible = false, grid = 0,
-  filter = null, maxTiles = 128 * 128, maxPixels = 16 * 1024 * 1024 }) {
+  filter = null, timeDs = null, maxTiles = 128 * 128, maxPixels = 16 * 1024 * 1024 }) {
   const keep = atomFilter(filter);
   for (const v of [x1, y1, x2, y2, z]) if (!Number.isSafeInteger(v) || v < 1) throw new TypeError('Region coordinates must be positive integers');
   if (x2 < x1 || y2 < y1) throw new RangeError('Empty region');
@@ -98,7 +100,7 @@ export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance
     if (!dmi) { bump('missing-icon', file ?? String(ap.icon)); drawPlaceholder(rgba, width, height, baseX, baseY, iconSize); continue; }
     const state = dmi.findState(String(ap.icon_state ?? ''));
     if (!state) { bump('missing-state', `${file}:${ap.icon_state}`); continue; } // BYOND draws nothing for a missing state
-    const pixels = dmi.frame(state, typeof ap.dir === 'number' ? ap.dir : 2, 1, { display: true });
+    const pixels = dmi.frame(state, typeof ap.dir === 'number' ? ap.dir : 2, timeDs == null ? 1 : frameAt(state, timeDs), { display: true });
     const tint = parseColor(ap.color);
     if (tint === undefined) bump('approximate-var', `${s.path}.color`);
     let alpha = typeof ap.alpha === 'number' ? Math.max(0, Math.min(255, Math.trunc(ap.alpha))) : 255; // builtin alpha stores an integer

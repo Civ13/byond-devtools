@@ -126,3 +126,44 @@ export function encodePng({ width, height, rgba }, { text = {} } = {}) {
   const texts = Object.entries(text).map(([k, v]) => chunk('zTXt', Buffer.concat([Buffer.from(k, 'latin1'), Buffer.from([0, 0]), deflateSync(Buffer.from(v, 'utf8'))])));
   return Buffer.concat([SIGNATURE, chunk('IHDR', ihdr), ...texts, chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
+
+/**
+ * Encode full RGBA8 frames of one size as an animated PNG (APNG). delaysMs: per-frame display
+ * time in milliseconds; plays: 0 loops forever. The first frame is also the default image, so
+ * viewers without APNG support show it. Every frame replaces the canvas (blend source, no dispose).
+ */
+export function encodeApng(frames, { width, height, delaysMs, plays = 0, text = {} }) {
+  if (!frames.length) throw new PngError('An animation needs at least one frame');
+  if (delaysMs.length !== frames.length) throw new PngError('One delay per frame is required');
+  const rows = rgba => {
+    if (rgba.length !== width * height * 4) throw new PngError('RGBA buffer size mismatch');
+    const raw = Buffer.alloc((width * 4 + 1) * height);
+    for (let y = 0; y < height; y++) Buffer.from(rgba.buffer, rgba.byteOffset + y * width * 4, width * 4).copy(raw, y * (width * 4 + 1) + 1);
+    return deflateSync(raw);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 6;
+  const actl = Buffer.alloc(8); actl.writeUInt32BE(frames.length, 0); actl.writeUInt32BE(plays, 4);
+  let seq = 0;
+  const fctl = ms => {
+    const b = Buffer.alloc(26); b.writeUInt32BE(seq++, 0); b.writeUInt32BE(width, 4); b.writeUInt32BE(height, 8);
+    b.writeUInt16BE(Math.max(0, Math.min(65535, Math.round(ms))), 20); b.writeUInt16BE(1000, 22); // delay = ms / 1000 s
+    b[24] = 0; b[25] = 0; return chunk('fcTL', b);
+  };
+  const texts = Object.entries(text).map(([k, v]) => chunk('zTXt', Buffer.concat([Buffer.from(k, 'latin1'), Buffer.from([0, 0]), deflateSync(Buffer.from(v, 'utf8'))])));
+  const out = [SIGNATURE, chunk('IHDR', ihdr), chunk('acTL', actl), ...texts];
+  frames.forEach((rgba, n) => {
+    out.push(fctl(delaysMs[n]));
+    if (n === 0) out.push(chunk('IDAT', rows(rgba)));
+    else { const seqBuf = Buffer.alloc(4); seqBuf.writeUInt32BE(seq++, 0); out.push(chunk('fdAT', Buffer.concat([seqBuf, rows(rgba)]))); }
+  });
+  out.push(chunk('IEND', Buffer.alloc(0)));
+  return Buffer.concat(out);
+}
+
+/** APNG frame count, plays and per-frame delays (ms) from the control chunks, or null for a still PNG. */
+export function apngInfo(bytes) {
+  const chunks = readChunks(bytes), actl = chunks.find(c => c.type === 'acTL');
+  if (!actl) return null;
+  const delays = chunks.filter(c => c.type === 'fcTL').map(c => { const num = c.data.readUInt16BE(20), den = c.data.readUInt16BE(22) || 100; return Math.round(num * 1000 / den); });
+  return { frames: actl.data.readUInt32BE(0), plays: actl.data.readUInt32BE(4), delaysMs: delays, fdat: chunks.filter(c => c.type === 'fdAT').length };
+}

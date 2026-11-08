@@ -4,7 +4,9 @@ import { mkdtemp, rm, cp, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import os from 'node:os'; import path from 'node:path';
 import { createInterface } from 'node:readline';
-import { decodePng } from '../src/png.js';
+import { decodePng, apngInfo } from '../src/png.js';
+import { writeFile } from 'node:fs/promises';
+import { animatedDmi } from './helpers/animated-dmi.js';
 import { createAgentApi, TOOLS } from '../src/agent-api.js';
 
 /** Start src/mcp.js on a copy of the render fixture project and talk to it over stdio. */
@@ -109,6 +111,25 @@ test('render options, icon renders and image compare', async () => {
     assert.equal(vsRender.isError, false, JSON.stringify(vsRender.json));
     assert.ok(vsRender.json.data.differentPixels > 0); assert.deepEqual(vsRender.json.data.image.panels, ['reference', 'candidate', 'heatmap']);
     assert.match((await s.call('image_compare', { reference: '/etc/hostname', candidate: '/etc/hostname' })).json.message, /files this server wrote/);
+  } finally { await s.close(); }
+});
+
+test('animated icon and map renders are APNGs', async () => {
+  const s = await startServer();
+  try {
+    await writeFile(path.join(s.dir, 'icons', 'anim.dmi'), animatedDmi({ frames: 3, rewind: true, loop: 2 }));
+    const icon = await s.call('icon_render', { dmi: 'icons/anim.dmi', state: 'spin', animate: true, scale: 2 });
+    assert.equal(icon.isError, false, JSON.stringify(icon.json));
+    const info = apngInfo(Buffer.from(icon.content[1].data, 'base64'));
+    assert.deepEqual(info, { frames: 4, plays: 2, delaysMs: [100, 300, 200, 300], fdat: 3 });
+    assert.deepEqual(icon.json.data.sequence.map(f => f.frame), [1, 2, 3, 2]);
+    assert.equal(icon.json.data.image.width, 16); assert.equal(icon.json.data.image.animation.format, 'apng');
+    assert.match((await s.call('icon_render', { dmi: 'icons/anim.dmi', state: 'spin', animate: true, sheet: true })).json.message, /animate or sheet/);
+    const map = await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, animate: { frames: 3, interval_ms: 250 } });
+    assert.equal(map.isError, false, JSON.stringify(map.json));
+    assert.deepEqual(apngInfo(Buffer.from(map.content[1].data, 'base64')), { frames: 3, plays: 0, delaysMs: [250, 250, 250], fdat: 2 });
+    assert.match((await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, animate: { frames: 61 } })).json.message, /2 to 60/);
+    assert.match((await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, animate: { frames: 2, speed: 1 } })).json.message, /not speed/);
   } finally { await s.close(); }
 });
 
