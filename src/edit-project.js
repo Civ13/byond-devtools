@@ -13,8 +13,8 @@ import { planEdit, EditError } from './edit.js';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
-/** Returns {applied, map, baseSha256, newSha256, changes, newKeys, reusedKeys, orphanedKeys, inverse, verified}. */
-export async function editMapFile({ root, map, patch, apply = false, maxEdits }) {
+/** Returns {applied, map, postcondition?, baseSha256, newSha256, changes, newKeys, reusedKeys, orphanedKeys, inverse, verified}. */
+export async function editMapFile({ root, map, patch, apply = false, maxEdits, postcondition }) {
   if (!patch || typeof patch.base !== 'string' || !/^[0-9a-f]{64}$/.test(patch.base)) throw new EditError('Patch must name the map\'s current sha256 as "base"');
   const input = await readProjectBytes(root, map);
   if (input.sha256 !== patch.base) throw new EditError(`Map changed since the patch was made: base ${patch.base}, file ${input.sha256}`, { actualSha256: input.sha256 });
@@ -26,6 +26,11 @@ export async function editMapFile({ root, map, patch, apply = false, maxEdits })
   const report = { applied: false, map: input.relative.split(path.sep).join('/'), baseSha256: input.sha256, newSha256,
     changes: plan.changes, newKeys: plan.newKeys, reusedKeys: plan.reusedKeys, orphanedKeys: plan.orphanedKeys,
     inverse: { base: newSha256, ...plan.inverse }, verified: plan.verified };
+  // A postcondition (for example a spatial contract) sees the planned text; a failure blocks the write.
+  if (postcondition) {
+    report.postcondition = await postcondition(plan.text);
+    if (apply && report.postcondition && report.postcondition.failed) throw new EditError(`Postcondition failed (${report.postcondition.failed} rule(s)); nothing was written`, { postcondition: report.postcondition });
+  }
   if (!apply) return report;
   const file = path.join(input.projectRoot, input.relative);
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.devtools-${randomBytes(6).toString('hex')}.tmp`);

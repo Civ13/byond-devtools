@@ -77,7 +77,7 @@ Static authored layout, initialized runtime world and persistent saved world mus
 always be separate truth layers. A static preview does not show saved buildings or
 prove native movement/lighting/constructor behavior.
 
-## Agent contract, planned
+## Agent contract
 
 Observation: open a pinned snapshot; summary; inspect cell/region; find by exact type
 or subtype; render bounded coordinate-labelled crops; analyze routes with explicit

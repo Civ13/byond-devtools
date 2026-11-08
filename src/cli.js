@@ -11,11 +11,12 @@ import { loadDiff, renderDiff } from './diff-project.js';
 import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { findGenerators, markTiles, GENERATOR_PROFILES } from './generators.js';
+import { checkContract, validateContract, needsTypes, densityResolver } from './contracts.js';
 import { recordIngame, PROFILES } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -29,7 +30,7 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           [--map FILE] [--time-of-day NAME] [--save-dump FILE.json] [--force]   or: --dump FILE.json --out FILE.png
           boots the game headless in a temp folder (RUNS GAME CODE: -safe, 127.0.0.1, no saves) and renders the
           initialized world: runtime icons, overlays, colour matrices, planes and lighting
-  edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json]
+  edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json] [--contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]]
           dry run by default; --apply replaces the map atomically after checking base sha256 and expected stacks
   diff: --map FILE (--before FILE | --git-ref REF | --patch FILE.json) [--limit N]
           [--out FILE.png --dme FILE (--byond BIN | --tree FILE) [--z N] [--x1 N --y1 N --x2 N --y2 N] [--pad N] [--force]]
@@ -40,9 +41,12 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   generators: --map FILE --dme FILE (--byond BIN | --tree FILE) [--profile default|civ13] [--roots /a,/b] [--z N] [--limit N]
           [--out FILE.png --x1 N --y1 N --x2 N --y2 N --z N [--force]]
           spawners, loot drops and landmarks: where they are and the types their vars name; --out marks them on a render
+  check: --map FILE --contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]
+          spatial contract: require/forbid/area counts, reachable/unreachable routes, enclosed rooms; exit 3 on failure
+          (edit --contract refuses --apply when the edited map would fail it)
 No DM execution or server access. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -56,10 +60,20 @@ function integer(value, name, fallback) {
   if(typeof value!=='string' || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) throw new Error(`Invalid --${name}`);
   return Number(value);
 }
+async function contractChecker(opts, dme) {
+  const contract=validateContract(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readFile(opts.contract))));
+  let density=null;
+  if(needsTypes(contract)) {
+    if(!dme) throw new Error('This contract has an actor with dense: true; pass --dme with --byond or --tree');
+    const renderer=await loadRenderer({root:opts.root,dme:opts.dme,binDir:opts.byond,treeFile:opts.tree});
+    density=densityResolver(renderer.tree,renderer.project.sourceLine,renderer.defines);
+  }
+  return text => { const r=checkContract(parseDmm(text),contract,{isDense:density?.isDense}); if(density) r.unresolvedDensity=[...density.unresolved].sort().slice(0,50); return r; };
+}
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -105,7 +119,9 @@ try {
     const patchBytes=await readFile(opts.patch); if(patchBytes.byteLength>16*1024*1024) throw new Error('Patch byte limit exceeded');
     const patch=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(patchBytes));
     if(opts['inverse-out']) { let exists=false; try { exists=!!(await lstat(opts['inverse-out'])); } catch {} if(exists) throw new Error(`${opts['inverse-out']} exists`); }
-    const report=await editMapFile({root:opts.root,map:opts.map,patch,apply:!!opts.apply});
+    const postcondition=opts.contract?await contractChecker(opts,dme):undefined;
+    const report=await editMapFile({root:opts.root,map:opts.map,patch,apply:!!opts.apply,postcondition});
+    if(report.postcondition?.failed) process.exitCode=3;
     if(opts['inverse-out']) await writeFile(opts['inverse-out'],JSON.stringify(report.inverse,null,1)+'\n',{flag:'wx'});
     result={schemaVersion:1,provenance:{map:report.map,baseSha256:report.baseSha256,truthLayer:'authored-source'},data:{...report,inverse:opts['inverse-out']?{file:opts['inverse-out']}:report.inverse}};
   }
@@ -177,6 +193,15 @@ try {
     result={schemaVersion:1,provenance:{map:opts.map,sha256:input.sha256,dme:renderer.project.dme,truthLayer:'authored-source+native-type-tree',profile},data:{...found,image,
       limitations:['Spawn targets are read from var source text, not by running the generator; whether its code uses that var is not proven.','Generators made at runtime by other code (events, map metadata, ecology) are not listed.']}};
   }
+  else if(command==='check') {
+    if(!opts.map) throw new Error('--map is required'); if(!opts.contract) throw new Error('--contract is required');
+    const check=await contractChecker(opts,dme);
+    const input=await readProjectFile(opts.root,opts.map);
+    const report=check(input.text.replace(/^\uFEFF/,''));
+    result={schemaVersion:1,provenance:{map:opts.map,sha256:input.sha256,contract:opts.contract,truthLayer:'authored-source'},data:{...report,
+      limitations:['Movement is a static walk over authored tiles: Bump(), CanPass(), door locks, runtime spawns and z transitions are not modelled.']}};
+    if(report.failed) process.exitCode=3;
+  }
   else if(command==='icon') {
     if(!opts.dmi) throw new Error('--dmi is required');
     const input=await readProjectBytes(opts.root,opts.dmi), icon=decodeDmi(input.data);
@@ -222,4 +247,4 @@ try {
     result={schemaVersion:1,provenance,data};
   }
   console.log(boundedJson(result));
-} catch(error) { console.error(JSON.stringify({error:error.name,message:error.message,...(error.edit!==undefined?{edit:error.edit}:{}),...(error.actual?{actual:error.actual}:{}),...(error.actualSha256?{actualSha256:error.actualSha256}:{})})); process.exitCode=1; }
+} catch(error) { console.error(JSON.stringify({error:error.name,message:error.message,...(error.edit!==undefined?{edit:error.edit}:{}),...(error.actual?{actual:error.actual}:{}),...(error.actualSha256?{actualSha256:error.actualSha256}:{}),...(error.postcondition?{postcondition:error.postcondition}:{})})); process.exitCode=1; }

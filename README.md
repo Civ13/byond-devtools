@@ -70,7 +70,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
-5. Prefabs and generator-aware tools (done), spatial contracts and local agent API/MCP.
+5. Prefabs, generator-aware tools and spatial contracts (done), and local agent API/MCP.
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
 
@@ -273,6 +273,40 @@ node src/cli.js generators ... --out gens.png --x1 420 --y1 300 --x2 470 --y2 34
 - Multi-line `list(` values are read across lines. Spawn targets come from source text, not
   from running code, so whether the generator really uses a var is not proven.
 - `--out` renders the region with invisible atoms shown and outlines generator tiles in cyan.
+
+## Spatial contracts
+
+A contract is a JSON list of checks a map region must pass. `check` runs it and exits 3 on any
+failure; `edit --contract` runs it on the edited text and refuses `--apply` when it would fail,
+so an agent's edit cannot quietly wall off a spawn or leak a sealed room.
+
+```json
+{ "kind": "byond-devtools-contract", "schemaVersion": 1,
+  "actors": { "human": { "dense": true, "blocking": { "paths": ["/turf/floor/beach/water/deep"] },
+                         "passable": { "paths": ["/obj/structure/simple_door"] } } },
+  "rules": [
+    { "id": "spawn", "type": "require", "region": { "x1": 10, "y1": 10, "x2": 20, "y2": 20, "z": 1 },
+      "match": { "paths": ["/obj/effect/landmark"] }, "min": 1, "max": 4 },
+    { "id": "road", "type": "reachable", "from": { "x": 443, "y": 326, "z": 2 }, "to": { "x": 225, "y": 326, "z": 2 }, "actor": "human" },
+    { "id": "vault", "type": "enclosed", "seed": { "x": 15, "y": 15, "z": 1 }, "region": { "x1": 12, "y1": 12, "x2": 18, "y2": 18, "z": 1 }, "actor": "human" } ] }
+```
+
+```sh
+node src/cli.js check --root R --map maps/x.dmm --contract c.json --dme civ13.dme --byond BIN
+node src/cli.js edit  --root R --map maps/x.dmm --patch p.json --contract c.json --dme civ13.dme --byond BIN --apply
+```
+
+- Rules: `require` (count of matching atoms in `[min, max]`), `forbid`, `area` (every tile's
+  area matches), `reachable`, `unreachable`, `enclosed` (a walk from `seed` never leaves the
+  region). `match` is `{paths, subtypes}`; subtypes count by default.
+- Actors make route assumptions explicit: `blocking` paths, `dense: true` (type default or map
+  override `density`, from the native type tree; unprovable densities block and are listed),
+  `passable` paths that win over both (doors the actor opens), `diagonal` (corners cannot be
+  cut, as with BYOND steps), `maxSteps`. Holes block. Routes stay on one z level.
+- Failures carry evidence: counts and up to 20 example tiles, the route found (or that an
+  endpoint is blocked and by what), and for a leaking room the first tile outside and the way out.
+- A static walk over authored tiles: `Bump()`, `CanPass()`, door locks, runtime spawns and
+  stairs are not modelled. On Gaia a 242-step walk across z2 checks in under 2 s.
 
 ## Native BYOND agreement
 
