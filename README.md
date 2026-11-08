@@ -23,8 +23,10 @@ resources and prompts, and the CLI gains `icon-diff` for sprite review. v0.3.0 a
 highlighting, animated states, icon renders, animated PNGs, image comparison and in-game renders
 (see [Agent API (MCP)](#agent-api-mcp)).
 
-Next, v0.5.0 (on `main`, not yet tagged): [map resize](#resize-a-map) in the CLI (`resize`), MCP
-(`map_resize`) and VS Code (**BYOND: Resize map**).
+v0.5.0 added [map resize](#resize-a-map) in the CLI (`resize`), MCP (`map_resize`) and VS Code
+(**BYOND: Resize map**). Next, v0.5.1 (on `main`, not yet tagged): resize widens the dictionary keys
+when a map has used every key, and releases publish to Open VSX and sign in to the Marketplace
+with Microsoft Entra.
 
 ## Core parser
 
@@ -211,8 +213,16 @@ Stable and Insiders on Linux and Windows. It is published on the
 as `civ13.byond-devtools-vscode`. See [vscode/README.md](vscode/README.md).
 
 Releasing: bump `vscode/package.json`'s version, merge, then push a matching tag `vX.Y.Z`.
-The Release workflow runs the tests, publishes a GitHub release with the `.vsix` and, with
-the `VSCE_PAT` secret set, publishes to the Marketplace.
+The Release workflow runs the tests, publishes a GitHub release with the `.vsix`, and
+publishes to the Marketplace and Open VSX when they are set up:
+
+- Marketplace, preferred: Microsoft Entra sign-in with no stored token. Set repository
+  variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` for an app registration that has a
+  federated credential for this repository's tags and is a Contributor on the `civ13`
+  publisher. The `VSCE_PAT` secret is used only when those variables are missing; global
+  personal access tokens stop working on 2026-12-01.
+- Open VSX: secret `OVSX_PAT` (an access token from open-vsx.org). The first release
+  creates the `civ13` namespace.
 
 ## Safe map edits
 
@@ -265,6 +275,10 @@ node src/cli.js resize --root /path/to/Civ13 --map maps/x.dmm --max-x 120 --offs
   the lowest free key in key order. The grid is rewritten as complete blocks in the map's own
   style (one block per level, or one column per block for TGM) with its line endings, so a
   resize to the same size is byte-identical. Unused entries are kept and reported.
+- When every key of the map's width is taken (52 one-letter keys, for example), the fill
+  first widens all keys by one character: each key keeps its order and gains a leading `a`
+  (`b` becomes `ab`), the widened map is checked tile by tile, and the report says
+  `widenedKeys: {from, to}`. This rewrites every dictionary line, so the diff is large.
 - The output is re-parsed and every tile is checked: kept tiles hold their old stacks at the
   moved coordinates, all others hold the fill. `--apply` writes atomically as `edit` does,
   and `--base` refuses a map that changed since the dry run. Each axis is at most 1000.

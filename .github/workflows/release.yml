@@ -9,13 +9,19 @@ on:
 
 permissions:
   contents: write
+  id-token: write # Microsoft Entra sign-in for the Marketplace (no stored token)
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Marketplace tokens are optional: each publish step runs only when its secret is set.
+      # Publishing is optional: each step runs only when its variable or secret is set.
+      # The Marketplace prefers Microsoft Entra sign-in (variables AZURE_CLIENT_ID and
+      # AZURE_TENANT_ID, a federated credential for this repository's tags); the
+      # VSCE_PAT secret is the fallback until then (global PATs end 2026-12-01).
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
@@ -41,11 +47,25 @@ jobs:
         run: |
           sed "s/VERSION/$VERSION/g" .github/release-notes.md > notes.md
           gh release create "$GITHUB_REF_NAME" "vscode/byond-map-preview-$VERSION.vsix" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
-      - name: Publish to the Visual Studio Marketplace
-        if: env.VSCE_PAT != ''
+      - name: Sign in to Microsoft Entra
+        if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Publish to the Visual Studio Marketplace (Entra)
+        if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != ''
+        working-directory: vscode
+        run: npx vsce publish --no-dependencies --azure-credential --packagePath "byond-map-preview-$VERSION.vsix"
+      - name: Publish to the Visual Studio Marketplace (token)
+        if: (env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '') && env.VSCE_PAT != ''
         working-directory: vscode
         run: npx vsce publish --no-dependencies --packagePath "byond-map-preview-$VERSION.vsix"
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
         working-directory: vscode
-        run: npx --yes ovsx@1.2.0 publish "byond-map-preview-$VERSION.vsix" -p "$OVSX_PAT"
+        run: |
+          # The first publish needs the civ13 namespace; it already exists after that.
+          npx --yes ovsx@1.2.0 create-namespace civ13 -p "$OVSX_PAT" || echo "Namespace civ13 already exists"
+          npx --yes ovsx@1.2.0 publish "byond-map-preview-$VERSION.vsix" -p "$OVSX_PAT"
