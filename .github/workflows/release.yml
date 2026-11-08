@@ -14,8 +14,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # A fixed environment gives the Entra federated credential one subject for every tag:
-    # repo:Civ13/byond-devtools:environment:release
+    # A fixed environment gives the Entra federated credential one subject for every tag
+    # (GitHub's ID form): repo:Civ13@41390861/byond-devtools@1449711083:environment:release
     environment: release
     timeout-minutes: 20
     env:
@@ -49,7 +49,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sed "s/VERSION/$VERSION/g" .github/release-notes.md > notes.md
+          # A re-run keeps the release it already made.
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && { echo "Release $GITHUB_REF_NAME already exists"; exit 0; }
           gh release create "$GITHUB_REF_NAME" "vscode/byond-map-preview-$VERSION.vsix" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+      # Open VSX goes first, so a Marketplace sign-in problem does not hold it back.
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        working-directory: vscode
+        shell: bash # -o pipefail, so the tee below keeps ovsx's exit status
+        run: |
+          # The first publish needs the civ13 namespace; it already exists after that.
+          npx --yes ovsx@1.2.0 create-namespace civ13 -p "$OVSX_PAT" || echo "Namespace civ13 already exists"
+          # A re-run skips a version Open VSX already has.
+          npx --yes ovsx@1.2.0 publish "byond-map-preview-$VERSION.vsix" -p "$OVSX_PAT" 2>&1 | tee ovsx.log || {
+            grep -q "already published" ovsx.log && echo "Open VSX already has $VERSION" || exit 1; }
       - name: Sign in to Microsoft Entra
         if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != ''
         uses: azure/login@v2
@@ -69,10 +82,3 @@ jobs:
         if: (env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '') && env.VSCE_PAT != ''
         working-directory: vscode
         run: npx vsce publish --no-dependencies --packagePath "byond-map-preview-$VERSION.vsix"
-      - name: Publish to Open VSX
-        if: env.OVSX_PAT != ''
-        working-directory: vscode
-        run: |
-          # The first publish needs the civ13 namespace; it already exists after that.
-          npx --yes ovsx@1.2.0 create-namespace civ13 -p "$OVSX_PAT" || echo "Namespace civ13 already exists"
-          npx --yes ovsx@1.2.0 publish "byond-map-preview-$VERSION.vsix" -p "$OVSX_PAT"
