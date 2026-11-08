@@ -109,6 +109,32 @@ async function run() {
     assert.match((await api.compareIcon(vscode.Uri.file(mapFile), 'HEAD')).error, /not a \.dmi/);
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
+  await test('Resize map grows an open clean editor, refuses unsaved edits, and keeps every tile', async () => {
+    const copy = path.join(project, 'maps', 'resize-test.dmm');
+    fs.copyFileSync(mapFile, copy);
+    const uri = vscode.Uri.file(copy);
+    try {
+      await vscode.commands.executeCommand('vscode.openWith', uri, api.viewType);
+      const s = await wait(() => api.sessions().find(x => x.uri === uri.toString()));
+      const fill = ['/turf/floor', '/area/zone'];
+      assert.equal(await s.edit({ op: 'erase', cells: [{ x: 2, y: 2, z: 1 }] }), true);
+      assert.match((await api.resize(uri, { maxX: 4, maxY: 3, maxZ: 1, fill, confirm: true })).error, /unsaved edits/);
+      await vscode.commands.executeCommand('undo');
+      await wait(() => !s.dirty());
+      const cancelled = await api.resize(uri, { maxX: 4, maxY: 3, maxZ: 1, fill, confirm: false });
+      assert.equal(cancelled.cancelled, true); assert.equal(sha(copy), sha(mapFile));
+      const r = await api.resize(uri, { maxX: 4, maxY: 3, maxZ: 1, fill, confirm: true });
+      assert.equal(r.applied, true, JSON.stringify(r));
+      assert.deepEqual([r.report.keptCells, r.report.filledCells], [9, 3]);
+      await wait(() => s.summary.world?.maxX === 4 || api.sessions().find(x => x.uri === uri.toString())?.summary.world?.maxX === 4, 20000, 'the editor to show the new size');
+      assert.deepEqual(s.inspect(4, 1, 1).atoms.map(a => a.path), fill);
+      assert.equal(s.dirty(), false);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(copy, { force: true });
+    }
+    assert.equal(sha(mapFile), before, 'the fixture map itself is untouched');
+  });
   await test('compile explains missing setup and leaves the Problems panel empty', async () => {
     await config.update('byondBin', '', vscode.ConfigurationTarget.Global);
     const r = await vscode.commands.executeCommand('byondDevtools.compile');

@@ -81,6 +81,23 @@ test('edits are dry runs unless the server allows writes; prefab and diff round-
   }
 });
 
+test('map_resize is a dry run unless the server allows writes and apply names the base', async () => {
+  for (const allow of [false, true]) {
+    const s = await startServer(allow ? ['--allow-write'] : []);
+    try {
+      const file = path.join(s.dir, 'maps', 'render.dmm'), before = await readFile(file);
+      const fill = ['/turf/floor', '/area/zone'];
+      const dry = await s.call('map_resize', { map: 'maps/render.dmm', max_x: 5, offset_y: 1, max_y: 4, fill });
+      assert.equal(dry.isError, false, JSON.stringify(dry.json));
+      assert.deepEqual([dry.json.data.applied, dry.json.data.after.maxX, dry.json.data.keptCells, dry.json.data.filledCells], [false, 5, 9, 11]);
+      assert.match((await s.call('map_resize', { map: 'maps/render.dmm', max_x: 5, fill, apply: true })).json.message, allow ? /apply needs base/ : /Writing is disabled/);
+      const applied = await s.call('map_resize', { map: 'maps/render.dmm', max_x: 5, fill, apply: true, base: dry.json.data.baseSha256 });
+      assert.equal(applied.isError, !allow);
+      if (allow) assert.equal((await s.call('map_summary', { map: 'maps/render.dmm' })).json.data.world.maxX, 5); else assert.deepEqual(await readFile(file), before);
+    } finally { await s.close(); }
+  }
+});
+
 test('render options, icon renders and image compare', async () => {
   const s = await startServer();
   try {

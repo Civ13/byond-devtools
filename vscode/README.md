@@ -40,8 +40,12 @@ Editing:
   verified, and the file is replaced atomically. If the file changed on disk in the
   meantime (git pull, mapmerge2), Save refuses and nothing is written; use
   **File: Revert File** to load the new version. A clean editor reloads it by itself.
-  Save As is not offered: save, then copy the file. Tiles outside the map's grid blocks
-  cannot be added, and the map size does not change.
+  Save As is not offered: save, then copy the file.
+- **BYOND: Resize map** (right-click a `.dmm`, or the editor title bar) asks for the new
+  size (width x height x levels), an offset that moves the existing tiles (to grow west or
+  south) and the stack for new tiles, shows what is kept, filled and cropped, then rewrites the
+  file atomically. Holes between grid blocks are filled too. Save or revert unsaved edits
+  first; an open editor reloads the resized map.
 
 Other commands:
 

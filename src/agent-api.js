@@ -3,8 +3,8 @@
  * bound to one project root. Transport-free; src/mcp.js serves it over MCP stdio.
  *
  * Every map path is project-relative and read with the same realpath containment as the CLI.
- * Read-only by default. The one tool that writes a map, `map_edit` with apply: true, is refused
- * unless the API was created with allowWrite, and then goes through edit-project's base-hash,
+ * Read-only by default. The tools that write a map, `map_edit` and `map_resize` with apply: true, are refused
+ * unless the API was created with allowWrite, and then go through edit-project's base-hash,
  * stale-stack, verification and optional contract checks. Only ingame_render runs game code, and
  * only when the API was created with allowGame (temp folder, -safe, 127.0.0.1, no saves); no tool
  * touches a live server. PNGs asked for with file: true go to outDir, never into the project.
@@ -15,7 +15,7 @@ import { parseDmm } from './dmm.js';
 import { resolveVar, lintMap } from './typetree.js';
 import { overrideAssignments } from './world.js';
 import { loadRenderer, renderMap } from './render-project.js';
-import { editMapFile } from './edit-project.js';
+import { editMapFile, resizeMapFile } from './edit-project.js';
 import { loadDiff, renderDiff, loadIconDiff } from './diff-project.js';
 import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
@@ -74,6 +74,7 @@ export const TOOLS = Object.freeze([
   { name: 'map_diff', description: 'Changed tiles between the map and a git revision, another map, or a patch dry run; optionally a before | after | changes PNG.', inputSchema: obj({ ...mapArg, git_ref: { type: 'string' }, before: { type: 'string' }, patch: { type: 'object' }, limit: { type: 'integer', minimum: 0, maximum: 10000 }, render: { type: 'boolean' } }, ['map']), annotations: { readOnlyHint: true } },
   { name: 'map_edit', description: 'Replace tile stacks with a patch {base, edits: [{x, y, z, expect, set}]}. Dry run unless apply is true (writing needs the server started with --allow-write). An optional contract must pass on the result.', inputSchema: obj({ ...mapArg, patch: { type: 'object' }, apply: { type: 'boolean' }, contract: { type: 'object' } }, ['map', 'patch']), annotations: { destructiveHint: true, idempotentHint: false } },
   { name: 'prefab_extract', description: 'Lift a region as a prefab (JSON tile stacks). Returns the prefab; nothing is written.', inputSchema: obj({ ...mapArg, ...region, layers: { type: 'array', items: { enum: ['movable', 'turf', 'area'] } } }, ['map', 'x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true } },
+  { name: 'map_resize', description: 'Change a map\'s size (max_x, max_y, max_z; unset keeps the current one). offset_x/offset_y move the existing tiles (to grow west or south); new space and holes between blocks get the fill stack (one turf and one area, e.g. ["/turf/floor", "/area/x"]); tiles moved outside are cropped. The dictionary is kept and the grid rewritten in the map\'s style, then verified. Dry run unless apply is true (needs --allow-write); base is the map\'s sha256.', inputSchema: obj({ ...mapArg, max_x: int, max_y: int, max_z: int, offset_x: { type: 'integer' }, offset_y: { type: 'integer' }, fill: { type: 'array', items: { type: 'string' } }, base: { type: 'string' }, apply: { type: 'boolean' } }, ['map']), annotations: { destructiveHint: true, idempotentHint: false } },
   { name: 'prefab_place', description: 'Turn a prefab into an edit patch at x, y, z (replace or overlay). Preview with map_diff, apply with map_edit.', inputSchema: obj({ ...mapArg, prefab: { type: 'object' }, x: int, y: int, z: int, mode: { enum: ['replace', 'overlay'] } }, ['map', 'prefab', 'x', 'y', 'z']), annotations: { readOnlyHint: true } },
   { name: 'map_generators', description: 'Spawners, loot drops and landmarks in a map and the types their vars name.', inputSchema: obj({ ...mapArg, z: int, profile: { enum: Object.keys(GENERATOR_PROFILES) }, roots: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 0, maximum: 10000 } }, ['map']), annotations: { readOnlyHint: true } },
   { name: 'project_compile', description: 'Full DreamMaker build of the project (optionally with another map selected) in a temp folder; returns errors and warnings with project-relative file:line. Runs no game code.', inputSchema: obj({ map: { type: 'string', description: 'Optional map to select instead of the .dme\'s own' } }), annotations: { readOnlyHint: true } },
@@ -330,6 +331,12 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       if (apply && !allowWrite) throw new ToolInputError('Writing is disabled: start the server with --allow-write to apply edits (dry runs work without it)');
       const postcondition = contract ? await contractCheck(contract) : undefined;
       const report = await editMapFile({ root, map, patch, apply, postcondition });
+      return { provenance: { map: report.map, baseSha256: report.baseSha256, truthLayer: 'authored-source' }, data: report };
+    },
+    async map_resize({ map, max_x, max_y, max_z, offset_x, offset_y, fill, base, apply = false }) {
+      if (apply && !allowWrite) throw new ToolInputError('Writing is disabled: start the server with --allow-write to apply a resize (dry runs work without it)');
+      if (apply && !base) throw new ToolInputError('apply needs base (the map\'s sha256 from the dry run)');
+      const report = await resizeMapFile({ root, map, apply, spec: { maxX: max_x, maxY: max_y, maxZ: max_z, offsetX: offset_x, offsetY: offset_y, fill, base } });
       return { provenance: { map: report.map, baseSha256: report.baseSha256, truthLayer: 'authored-source' }, data: report };
     },
     async prefab_extract({ map, layers, ...reg }) { const { input, parsed } = await readMap(map); return { provenance: provenance(map, input), data: extractPrefab(parsed, { ...reg, layers, source: { map, sha256: input.sha256 } }) }; },

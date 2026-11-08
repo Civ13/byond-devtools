@@ -22,6 +22,8 @@ authored source plus compiled type defaults, not client screenshots.
 - Change a map: prefab_place or your own patch, preview with map_diff (render: true), check with
   map_check, then map_edit with apply: true (needs --allow-write). A patch carries the map's
   sha256 as base and each tile's current stack as expect.
+- Resize a map: map_resize (dry run first; apply with the dry run's baseSha256 as base). New
+  space and holes between blocks get the fill stack; offset_x/offset_y grow it west or south.
 - Compare pictures: image_compare (a PNG against a PNG or a fresh render).
 - Live game: ingame_render boots the game (needs --allow-game); dump_render draws a dump a running
   game made, such as Civ13's character_view.

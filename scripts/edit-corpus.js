@@ -4,13 +4,15 @@
 //   - mapmerge2 loads the edited map and writes it back byte for byte (when it does so for the
 //     original), so the edit kept mapmerge2's DMM/TGM style and key order;
 //   - scripts/maplint.py reports no errors that the original did not have;
-//   - the inverse patch restores every cell.
+//   - the inverse patch restores every cell;
+//   - a resize to the same size is byte-identical, and growing then shrinking keeps every tile.
 // The checkout is never written. Usage: node scripts/edit-corpus.js --root CIV13 [--python EXE] [--limit N]
 import { readFile, writeFile, mkdtemp, rm, readdir, copyFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os'; import path from 'node:path';
 import { parseDmm } from '../src/dmm.js';
 import { planEdit } from '../src/edit.js';
+import { planResize } from '../src/resize.js';
 
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
 const root = arg('root'), python = arg('python', process.platform === 'win32' ? 'py' : 'python3'), limit = Number(arg('limit', 1e9));
@@ -53,7 +55,7 @@ const rank = p => p.startsWith('/turf') ? 1 : p.startsWith('/area') ? 2 : 0;
 
 const files = (await walk(path.join(root, 'maps'))).sort().slice(0, limit);
 const dir = await mkdtemp(path.join(os.tmpdir(), 'byond-edit-corpus-'));
-const failures = [], stats = { maps: 0, edits: 0, newKeys: 0, mapmergeSame: 0, mapmergeOriginalDiffers: 0, mapmergeNormalizedSame: 0, keySpaceFull: 0, skipped: 0 };
+const failures = [], stats = { maps: 0, edits: 0, newKeys: 0, mapmergeSame: 0, mapmergeOriginalDiffers: 0, mapmergeNormalizedSame: 0, keySpaceFull: 0, skipped: 0, resized: 0 };
 try {
   const pending = [];
   for (const [i, file] of files.entries()) {
@@ -70,6 +72,18 @@ try {
     // The inverse patch must restore every cell's stack.
     const undone = planEdit(r.text, r.inverse), before = [...map.cells()], after = [...parseDmm(undone.text).cells()];
     if (before.some((c, j) => c.atoms.map(a => a.raw).join() !== after[j].atoms.map(a => a.raw).join())) failures.push(`${file}: inverse patch did not restore the map`);
+    // Resizing to the same size rewrites the grid in the map's own style: it must be byte-identical.
+    // Growing by a tile and shrinking back must give the same grid (the fill entry stays, unused).
+    try {
+      if (planResize(text, {}).text !== text) failures.push(`${file}: resize to the same size changed the file`);
+      const w = map.world, fill = map.inspectCell(1, 1, 1)?.atoms.map(a => a.raw.trim()).filter(a => /^\/(turf|area)\b/.test(a));
+      if (fill?.length === 2) {
+        const grown = planResize(text, { maxX: w.maxX + 1, maxY: w.maxY + 1, fill }), back = planResize(grown.text, { maxX: w.maxX, maxY: w.maxY });
+        const cellsOf = t => [...parseDmm(t).cells()].map(c => `${c.x},${c.y},${c.z}=${c.atoms.map(a => a.raw).join()}`).join('\n');
+        if (cellsOf(back.text) !== cellsOf(text)) failures.push(`${file}: resize grow and shrink did not restore every tile`);
+        else stats.resized++;
+      }
+    } catch (e) { if (!/no free .*dictionary key/.test(e.message)) failures.push(`${file}: resize: ${e.message}`); }
     const orig = path.join(dir, `${i}.orig.dmm`), edited = path.join(dir, `${i}.edit.dmm`);
     await writeFile(orig, text); await writeFile(edited, r.text);
     pending.push({ file, orig, edited });
