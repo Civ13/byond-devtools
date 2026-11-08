@@ -54,7 +54,7 @@ export function parseTypeTree(xml, { maxBytes = 64 * 1024 * 1024, maxTypes = 200
       let type = types.get(path);
       if (!type) {
         if (types.size >= maxTypes) throw new RangeError('Type count limit exceeded');
-        type = { path, kind: name, file: loc.file, line: loc.line, lexicalParent: parent ? parent.path : null, vars: new Map(), procs: 0 };
+        type = { path, kind: name, file: loc.file, line: loc.line, lexicalParent: parent ? parent.path : null, vars: new Map(), procs: 0, procNames: new Set() };
         types.set(path, type);
       }
       if (!selfClosing) stack.push({ tag: name, type });
@@ -67,7 +67,7 @@ export function parseTypeTree(xml, { maxBytes = 64 * 1024 * 1024, maxTypes = 200
       if (pendingVar && pendingVar.printed === null) pendingVar.printed = text;
       if (!selfClosing) stack.push({ tag: name });
     } else if (name === 'proc' || name === 'verb') {
-      const owner = stack.findLast(s => s.type)?.type; if (owner) owner.procs++;
+      const owner = stack.findLast(s => s.type)?.type; if (owner) { owner.procs++; if (name === 'proc') owner.procNames.add(text); }
       if (!selfClosing) stack.push({ tag: name });
     } else if (!selfClosing) stack.push({ tag: name });
   }
@@ -96,8 +96,10 @@ function makeTree(types, recovered = 0) {
     return null;
   }
   function isA(path, ancestor) { return chain(path).includes(ancestor); }
-  return Object.freeze({ size: types.size, recoveredTags: recovered, has, chain, lookupVar, isA, paths: () => [...types.keys()].sort(),
-    get: path => { const t = types.get(path); return t ? { ...t, vars: [...t.vars.keys()].sort() } : null; } });
+  /** Nearest type on the chain (the type itself first) that defines or overrides proc `name`. */
+  function procOwner(path, name) { return chain(path).find(p => types.get(p)?.procNames.has(name)) ?? null; }
+  return Object.freeze({ size: types.size, recoveredTags: recovered, has, chain, lookupVar, isA, procOwner, paths: () => [...types.keys()].sort(),
+    get: path => { const t = types.get(path); return t ? { ...t, vars: [...t.vars.keys()].sort(), procNames: [...t.procNames].sort() } : null; } });
 }
 
 // DreamMaker's built-in constants, recorded from DreamDaemon 516.1688 (fixtures/native/builtin-defines.json).
