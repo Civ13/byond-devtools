@@ -9,7 +9,7 @@ const vscode = require('vscode');
 const repo = path.join(__dirname, '..', '..', '..');
 const project = path.join(repo, 'fixtures', 'render', 'project');
 const sha = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
-const wait = async (fn, ms = 20000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error('timed out'); await new Promise(r => setTimeout(r, 100)); } };
+const wait = async (fn, ms = 20000, what = String(fn)) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
 async function run() {
   const results = [];
@@ -48,9 +48,49 @@ async function run() {
     assert.deepEqual(shown, { width: 24, height: 24, error: undefined });
     await assert.rejects(s.render({ x1: 1, y1: 1, x2: 100, y2: 100, z: 2 }), /outside the map/);
   });
-  await test('the preview is read-only: the map is never modified and nothing is dirty', async () => {
+  await test('opening and rendering never modifies the map or makes it dirty', async () => {
     assert.equal(sha(mapFile), before);
-    assert.equal(vscode.workspace.textDocuments.filter(d => d.isDirty).length, 0);
+    assert.equal(vscode.window.tabGroups.all.flatMap(g => g.tabs).filter(t => t.isDirty).length, 0);
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  });
+  await test('edits are undoable, dirty the editor, and Save writes them through safe edit', async () => {
+    const copy = path.join(project, 'maps', 'edit-test.dmm');
+    fs.copyFileSync(mapFile, copy);
+    const uri = vscode.Uri.file(copy), tabDirty = () => vscode.window.tabGroups.all.flatMap(g => g.tabs).some(t => t.isDirty);
+    try {
+      await vscode.commands.executeCommand('vscode.openWith', uri, api.viewType);
+      const s = await wait(() => api.sessions().find(x => x.uri === uri.toString()));
+      // sessions() returns snapshots, so look the panel up again to see it displayed.
+      await wait(() => api.sessions().find(x => x.uri === uri.toString() && x.displayed));
+      await assert.rejects(s.edit({ op: 'place', cells: [{ x: 1, y: 1, z: 1 }], atom: '/obj/not_a_type' }), /Not a type in this project/);
+      assert.equal(await s.edit({ op: 'place', cells: [{ x: 2, y: 2, z: 1 }, { x: 3, y: 2, z: 1 }], atom: '/obj/tree' }), true);
+      assert.deepEqual(s.inspect(2, 2, 1).atoms.map(a => a.path), ['/obj/tinted', '/mob/man', '/obj/tree', '/turf/floor', '/area/zone']);
+      await wait(() => tabDirty());
+      await vscode.commands.executeCommand('undo');
+      await wait(() => s.inspect(2, 2, 1).atoms.length === 4);
+      await vscode.commands.executeCommand('redo');
+      await wait(() => s.inspect(2, 2, 1).atoms.length === 5);
+      assert.equal(await s.edit({ op: 'set', x: 1, y: 1, z: 1, atoms: ['/obj/box{dir = 8}', '/turf/floor/grass', '/area/zone'] }), true);
+      assert.equal(await s.edit({ op: 'move', from: { x: 1, y: 1, z: 1 }, index: 0, to: { x: 2, y: 1, z: 1 } }), true);
+      assert.equal(sha(copy), sha(mapFile), 'nothing is written before Save');
+      await vscode.commands.executeCommand('workbench.action.files.save');
+      await wait(() => !tabDirty());
+      const { parseDmm } = await import(pathToFileURL(path.join(repo, 'src', 'dmm.js')).href);
+      const saved = parseDmm(fs.readFileSync(copy, 'utf8')), stackOf = (x, y) => saved.inspectCell(x, y, 1).atoms.map(a => a.raw.trim());
+      assert.deepEqual(stackOf(2, 2), ['/obj/tinted', '/mob/man', '/obj/tree', '/turf/floor', '/area/zone']);
+      assert.deepEqual(stackOf(1, 1), ['/turf/floor/grass', '/area/zone']);
+      assert.deepEqual(stackOf(2, 1), ['/obj/box{dir = 8}', '/turf/floor/grass', '/area/zone']);
+      assert.deepEqual(stackOf(1, 3), parseDmm(fs.readFileSync(mapFile, 'utf8')).inspectCell(1, 3, 1).atoms.map(a => a.raw.trim()));
+      assert.equal(s.dirty(), false);
+      // A clean editor reloads when the file changes on disk.
+      fs.copyFileSync(mapFile, copy);
+      await wait(() => s.inspect(2, 2, 1).atoms.length === 4);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(copy, { force: true });
+    }
+    assert.equal(sha(mapFile), before, 'the fixture map itself is untouched');
   });
   await test('compile explains missing setup and leaves the Problems panel empty', async () => {
     await config.update('byondBin', '', vscode.ConfigurationTarget.Global);

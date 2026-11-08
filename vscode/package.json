@@ -1,8 +1,8 @@
 {
   "name": "byond-devtools-vscode",
-  "displayName": "BYOND Map Preview",
-  "description": "Read-only preview of BYOND .dmm maps (rendered tiles from the native type tree, cell inspection, diagnostics), plus DreamMaker compile errors in the Problems panel and local playtests.",
-  "version": "0.1.0",
+  "displayName": "BYOND Map Editor",
+  "description": "View and edit BYOND .dmm maps (rendered tiles from the native type tree; place, erase, stamp and move objects, edit vars, undo/redo, verified saves), plus DreamMaker compile errors in the Problems panel and local playtests.",
+  "version": "0.2.0",
   "publisher": "civ13",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -20,6 +20,7 @@
   },
   "keywords": [
     "byond",
+    "map editor",
     "dream maker",
     "dmm",
     "map",
@@ -39,7 +40,7 @@
     "customEditors": [
       {
         "viewType": "byondDevtools.mapPreview",
-        "displayName": "BYOND Map Preview",
+        "displayName": "BYOND Map Editor",
         "selector": [
           {
             "filenamePattern": "*.dmm"
@@ -51,7 +52,7 @@
     "commands": [
       {
         "command": "byondDevtools.openPreview",
-        "title": "Open BYOND Map Preview",
+        "title": "Open BYOND Map Editor",
         "category": "BYOND"
       },
       {
@@ -80,7 +81,7 @@
       ]
     },
     "configuration": {
-      "title": "BYOND Map Preview",
+      "title": "BYOND Map Editor",
       "properties": {
         "byondDevtools.byondBin": {
           "type": "string",

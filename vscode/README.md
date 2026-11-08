@@ -1,16 +1,37 @@
-# BYOND Map Preview (VS Code)
+# BYOND Map Editor (VS Code)
 
-A read-only custom editor for BYOND `.dmm` maps, built on
+A custom editor for BYOND `.dmm` maps, built on
 [byond-devtools](https://github.com/Civ13/byond-devtools). Install it from the
 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=civ13.byond-devtools-vscode).
 
-- Open a map, then run **BYOND: Open BYOND Map Preview** (or right-click the file, or
+- Open a map, then run **BYOND: Open BYOND Map Editor** (or right-click the file, or
   "Reopen Editor With..."). The text editor stays the default for `.dmm` files.
 - Pick a z level, the bottom-left tile and a view size (16, 32 or 64 tiles), then Render.
-  Click a tile to see its authored atom stack and overrides.
 - The image is the static preview (authored source plus compiled type defaults), not a
   client screenshot. The report lists everything not drawn exactly.
-- Nothing is ever written: the preview has no edit or save path.
+
+Editing:
+
+- **Select**: click a tile to see its stack. Change a type path, add or remove var overrides
+  (names are suggested from the type tree), reorder, remove or add atoms, then **Apply**.
+  **Move** on an object or mob, then click another tile, moves it there. **Brush** loads an
+  atom into the Place tool; **Use as stamp** copies the whole stack for the Stamp tool.
+- **Place**: click or drag to put the brush type on tiles. Objects and mobs go on top of the
+  tile's objects; a turf replaces the tile's turfs; an area replaces its area.
+- **Erase**: click or drag to remove the top object or mob from tiles (turfs and areas stay).
+- **Stamp**: click or drag to replace whole tiles with the copied stack.
+- Undo and redo with Ctrl+Z / Ctrl+Y (or the buttons); each click or drag is one step.
+  With the type tree loaded, a path the project does not define is refused.
+- **Save** (Ctrl+S) writes one safe-edit patch from the file as it was opened or last saved:
+  only edited tiles change, untouched cells keep their bytes, the result is re-parsed and
+  verified, and the file is replaced atomically. If the file changed on disk in the
+  meantime (git pull, mapmerge2), Save refuses and nothing is written; use
+  **File: Revert File** to load the new version. A clean editor reloads it by itself.
+  Save As is not offered: save, then copy the file. Tiles outside the map's grid blocks
+  cannot be added, and the map size does not change.
+
+Other commands:
+
 - **BYOND: Compile project** builds the `.dme` with DreamMaker in a temporary folder and
   puts every error and warning in the Problems panel (nothing is written to your checkout).
 - **BYOND: Start local playtest** asks first, then compiles and runs the game on this computer
