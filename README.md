@@ -388,7 +388,17 @@ Or in a project's `.mcp.json`:
   write if an optional `contract` fails. Read-only tools are annotated `readOnlyHint`.
 - Map paths are project-relative with realpath containment, as in the CLI. The type tree is
   built once per server (restart it after changing DM code). Only `ingame_render` runs game code.
+- Resources: `byond://guide` (a short how-to), every project map as `byond://map/{path}` (its
+  summary), and templates for `byond://icon/{path}` (states) and `byond://type/{path}` (vars).
+  Prompts: `render_area`, `review_map_change` and `inspect_icon` set up those jobs for the model.
 - The transport-free API is `createAgentApi()` in `src/agent-api.js`.
+
+## Sprite review
+
+`node src/cli.js icon-diff --before old.dmi --after new.dmi --out review.png` compares two versions
+of a DMI state by state: added, removed and changed states (size, dirs, frames, delays, pixels).
+The PNG has one row per changed state: before | after | heatmap. It exits 3 when anything changed
+(`none` stands for a missing side). Civ13 runs it on pull requests that touch `icons/`.
 
 ## Compile and playtest
 

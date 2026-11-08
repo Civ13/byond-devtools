@@ -14,6 +14,7 @@ import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { createAgentApi, ToolInputError } from './agent-api.js';
 import { boundedJson } from './json.js';
+import { PROMPTS, promptMessages, listResources, readResource, RESOURCE_TEMPLATES } from './mcp-extras.js';
 
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -39,13 +40,24 @@ export async function handleMessage(api, msg) {
   switch (msg.method) {
     case 'initialize': {
       const asked = msg.params?.protocolVersion;
-      return reply({ protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0], capabilities: { tools: { listChanged: false } },
+      return reply({ protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0], capabilities: { tools: { listChanged: false }, resources: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: { name: 'byond-devtools', version: VERSION },
-        instructions: 'BYOND map tools for one project. Coordinates are one-based, (1,1) is south-west. Renders are static previews of authored source, not client screenshots. Edits need the map\'s current sha256 as patch.base and the current stack of each tile as expect; preview with map_diff before map_edit apply.' });
+        instructions: 'BYOND map tools for one project. Coordinates are one-based, (1,1) is south-west. Renders are static previews of authored source, not client screenshots. Edits need the map\'s current sha256 as patch.base and the current stack of each tile as expect; preview with map_diff before map_edit apply. Read byond://guide for an overview; prompts cover common jobs.' });
     }
     case 'notifications/initialized': case 'notifications/cancelled': return null;
     case 'ping': return reply({});
     case 'tools/list': return reply({ tools: api.tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations })) });
+    case 'resources/list': return reply({ resources: api.root ? await listResources(api.root) : [] });
+    case 'resources/templates/list': return reply({ resourceTemplates: RESOURCE_TEMPLATES });
+    case 'resources/read': {
+      try { return reply({ contents: [await readResource(api, msg.params?.uri)] }); }
+      catch (e) { return error(-32002, `Resource not readable: ${e.message}`); }
+    }
+    case 'prompts/list': return reply({ prompts: PROMPTS });
+    case 'prompts/get': {
+      try { return reply(promptMessages(msg.params?.name, msg.params?.arguments ?? {})); }
+      catch (e) { return error(-32602, e.message); }
+    }
     case 'tools/call': {
       const { name, arguments: args } = msg.params ?? {};
       if (!api.tools.some(t => t.name === name)) return error(-32602, `Unknown tool ${name}`);

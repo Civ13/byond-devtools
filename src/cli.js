@@ -16,8 +16,9 @@ import { compileProject, playtest } from './devrun-project.js';
 import { recordIngame, PROFILES, validateDump, loadDumpIcons } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
+import { diffIcons } from './icon-diff.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check|compile|playtest> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check|compile|playtest|icon-diff> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -47,13 +48,16 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   check: --map FILE --contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]
           spatial contract: require/forbid/area counts, reachable/unreachable routes, enclosed rooms; exit 3 on failure
           (edit --contract refuses --apply when the edited map would fail it)
+  icon-diff: --before FILE.dmi|none --after FILE.dmi|none [--out FILE.png] [--threshold N] [--force]   (no --root needed)
+          state-by-state DMI comparison: added, removed and changed states (size, dirs, frames, delays,
+          pixels); --out draws one row per changed state: before | after | heatmap
   compile: --dme FILE --byond BIN [--map FILE]   full DreamMaker build in a temp folder; structured errors/warnings, exit 3 on errors
   playtest: --dme FILE --byond BIN [--map FILE] [--port N] [--minutes N] [--profile-procs] [--follow]
           RUNS THE GAME for you to join with Dream Seeker: temp folder, -safe, 127.0.0.1 only, no saves.
           Stops after --minutes (default 30) or Ctrl+C; reports runtime errors with source lines and the proc profile
 Apart from ingame and playtest, nothing runs DM code or touches a server. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -80,8 +84,24 @@ async function contractChecker(opts, dme) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check','compile','playtest'].includes(command)) throw new Error('Unknown command');
-  const opts=options(args); if(!opts.root) throw new Error('--root is required');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check','compile','playtest','icon-diff'].includes(command)) throw new Error('Unknown command');
+  const opts=options(args);
+  if(command==='icon-diff') {
+    if(!opts.before || !opts.after) throw new Error('--before and --after are required (a .dmi path or none)');
+    const load=async f=>{ if(f==='none') return null; try { return decodeDmi(await readFile(f),{plainPng:true}); } catch(e) { throw new Error(`${f}: ${e.message}`); } };
+    const before=await load(opts.before), after=await load(opts.after);
+    if(!before && !after) throw new Error('--before and --after cannot both be none');
+    const threshold=integer(opts.threshold,'threshold',0); if(threshold>255) throw new Error('Invalid --threshold');
+    const d=diffIcons(before,after,{threshold});
+    let out=null;
+    if(opts.out && d.image) {
+      if(!/\.png$/i.test(opts.out)) throw new Error('--out must name a .png file');
+      await writeFile(opts.out,encodePng(d.image,{text:{Comment:'byond-devtools icon-diff: before | after | heatmap'}}),{flag:opts.force?'w':'wx'}); out=opts.out;
+    }
+    console.log(boundedJson({schemaVersion:1,data:{...d.summary,out,states:d.states.filter(x=>x.change!=='same')}}));
+    process.exit(d.summary.added+d.summary.removed+d.summary.changed ? 3 : 0);
+  }
+  if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
   if(command==='render') {

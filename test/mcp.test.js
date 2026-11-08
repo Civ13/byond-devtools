@@ -172,3 +172,28 @@ test('dump_render draws a live appearance dump from inline and project icons', a
     assert.match((await s.call('dump_render', { dump: { ...dump, icons: [{ source: '../../etc/passwd' }] } })).json.data.diagnostics.map(d => d.code).join(), /missing-icon/);
   } finally { await s.close(); }
 });
+
+test('resources and prompts', async () => {
+  const s = await startServer();
+  try {
+    const init = await s.request('initialize', { protocolVersion: '2025-06-18' });
+    assert.ok(init.result.capabilities.resources && init.result.capabilities.prompts);
+    const list = (await s.request('resources/list', {})).result.resources;
+    assert.equal(list[0].uri, 'byond://guide');
+    assert.ok(list.some(r => r.uri === 'byond://map/maps/render.dmm'));
+    assert.equal((await s.request('resources/templates/list', {})).result.resourceTemplates.length, 3);
+    assert.match((await s.request('resources/read', { uri: 'byond://guide' })).result.contents[0].text, /south-west/);
+    const map = JSON.parse((await s.request('resources/read', { uri: 'byond://map/maps/render.dmm' })).result.contents[0].text);
+    assert.ok(map.data.world);
+    const icon = JSON.parse((await s.request('resources/read', { uri: 'byond://icon/icons/objs.dmi' })).result.contents[0].text);
+    assert.deepEqual(icon.data.states.map(x => x.name), ['box', 'half']);
+    assert.equal((await s.request('resources/read', { uri: 'byond://map/../../etc/passwd' })).error.code, -32002);
+    assert.equal((await s.request('resources/read', { uri: 'http://x' })).error.code, -32002);
+    const prompts = (await s.request('prompts/list', {})).result.prompts;
+    assert.deepEqual(prompts.map(p => p.name), ['render_area', 'review_map_change', 'inspect_icon']);
+    const area = (await s.request('prompts/get', { name: 'render_area', arguments: { map: 'maps/render.dmm', x: '5', y: '3', radius: '2' } })).result;
+    assert.match(area.messages[0].content.text, /x1=3, y1=1, x2=7, y2=5, z=1/);
+    assert.equal((await s.request('prompts/get', { name: 'render_area', arguments: { map: 'm' } })).error.code, -32602);
+    assert.equal((await s.request('prompts/get', { name: 'nope' })).error.code, -32602);
+  } finally { await s.close(); }
+});
