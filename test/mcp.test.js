@@ -79,8 +79,55 @@ test('edits are dry runs unless the server allows writes; prefab and diff round-
   }
 });
 
+test('render options, icon renders and image compare', async () => {
+  const s = await startServer();
+  try {
+    const big = await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, scale: 2, background: '#000000', boxes: [{ x: 2, y: 2 }], file: true });
+    assert.equal(big.isError, false, JSON.stringify(big.json));
+    const png = decodePng(Buffer.from(big.content[1].data, 'base64'));
+    assert.equal(png.width, 48); assert.equal(png.rgba[((16 * 48) + 16) * 4], 255, 'box outline at tile (2,2)');
+    assert.ok(path.isAbsolute(big.json.data.image.file));
+    const noInline = await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, inline: false });
+    assert.equal(noInline.content.length, 1);
+    const turfsOnly = await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, kinds: ['turf'] });
+    assert.ok(turfsOnly.json.data.diagnostics.some(d => d.code === 'filtered-out' && d.detail === '/obj/tree'));
+    assert.match((await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, kinds: ['tree'] })).json.message, /kinds items must be one of/);
+
+    const info = await s.call('icon_info', { dmi: 'icons/objs.dmi' });
+    assert.deepEqual(info.json.data.states.map(x => [x.name, x.dirs]), [['box', 4], ['half', 1]]);
+    const sheet = await s.call('icon_render', { dmi: 'icons/objs.dmi', state: 'box', sheet: true });
+    assert.deepEqual(sheet.json.data.rows, ['south', 'north', 'east', 'west']);
+    assert.equal(decodePng(Buffer.from(sheet.content[1].data, 'base64')).height, 4 * 8 + 3);
+    const byType = await s.call('icon_render', { type: '/obj/tree', scale: 3 });
+    assert.equal(byType.json.data.image.width, 48); assert.equal(byType.json.provenance.type, '/obj/tree');
+    assert.match((await s.call('icon_render', { dmi: 'icons/objs.dmi', state: 'nope' })).json.message, /No state "nope"/);
+
+    const same = await s.call('image_compare', { reference: big.json.data.image.file, candidate: big.json.data.image.file, show: 'none' });
+    assert.equal(same.json.data.identical, true); assert.equal(same.content.length, 1);
+    const ref = await s.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, file: true, inline: false });
+    const vsRender = await s.call('image_compare', { reference: ref.json.data.image.file, map: 'maps/render.dmm', x1: 1, y1: 1, x2: 3, y2: 3, z: 1, exclude_types: ['/obj/tree'] });
+    assert.equal(vsRender.isError, false, JSON.stringify(vsRender.json));
+    assert.ok(vsRender.json.data.differentPixels > 0); assert.deepEqual(vsRender.json.data.image.panels, ['reference', 'candidate', 'heatmap']);
+    assert.match((await s.call('image_compare', { reference: '/etc/hostname', candidate: '/etc/hostname' })).json.message, /files this server wrote/);
+  } finally { await s.close(); }
+});
+
+test('in-game renders are refused unless the server allows game runs', async () => {
+  const s = await startServer();
+  try { assert.match((await s.call('ingame_render', { x1: 1, y1: 1, x2: 2, y2: 2, z: 1 })).json.message, /--allow-game/); }
+  finally { await s.close(); }
+});
+
 test('tools that need the type tree say so when the server has none', async () => {
   const api = createAgentApi({ root: 'fixtures/render/project' });
   await assert.rejects(api.call('map_render', { map: 'maps/render.dmm', x1: 1, y1: 1, x2: 2, y2: 2, z: 1 }), /needs the native type tree/);
   assert.equal((await api.call('map_summary', { map: 'maps/render.dmm' })).data.cellCount, 9);
+});
+
+const bin = process.env.BYOND_BIN;
+test('live: ingame_render boots the fixture and returns a scaled, boxed PNG (set BYOND_BIN to run)', { skip: bin ? false : 'BYOND_BIN not set' }, async () => {
+  const api = createAgentApi({ root: 'fixtures/render/project', dme: 'ingame.dme', byond: bin, allowGame: true });
+  const r = await api.call('ingame_render', { x1: 1, y1: 1, x2: 3, y2: 2, z: 1, scale: 2, boxes: [{ x: 1, y: 1 }] });
+  assert.equal(r.data.image.width, 48); assert.equal(decodePng(r.png).height, 32);
+  assert.equal(r.provenance.truthLayer, 'native-initialized-world');
 });

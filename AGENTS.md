@@ -15,7 +15,9 @@
   Prefabs place through an edit patch, never by writing the map.
   The renderer core (`src/render.js`) stays pure; file access lives in `src/render-project.js`.
 - The MCP server (`src/mcp.js`) is read-only unless started with `--allow-write`; its only
-  write path is `map_edit` through `src/edit-project.js`.
+  map write path is `map_edit` through `src/edit-project.js`. PNGs asked for with `file: true`
+  go to the OS temp folder (`byond-devtools-mcp`), never the project. `ingame_render` boots the
+  game through `src/ingame.js` only when the server was started with `--allow-game`.
 - Do not vendor Civ13 maps/assets or third-party source without license review.
 - Report passed, failed and unrun checks separately. Parser success is not native
   compile, gameplay validation, or a finished editor.

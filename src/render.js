@@ -58,7 +58,8 @@ function parseColor(value) {
  * Limits: at most `maxTiles` tiles and `maxPixels` output pixels.
  */
 export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance, icon, areas = false, showInvisible = false, grid = 0,
-  maxTiles = 128 * 128, maxPixels = 16 * 1024 * 1024 }) {
+  filter = null, maxTiles = 128 * 128, maxPixels = 16 * 1024 * 1024 }) {
+  const keep = atomFilter(filter);
   for (const v of [x1, y1, x2, y2, z]) if (!Number.isSafeInteger(v) || v < 1) throw new TypeError('Region coordinates must be positive integers');
   if (x2 < x1 || y2 < y1) throw new RangeError('Empty region');
   const tilesW = x2 - x1 + 1, tilesH = y2 - y1 + 1;
@@ -77,12 +78,14 @@ export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance
     const order = [...atoms.filter(t => t.kind === 'area'), ...atoms.filter(t => t.kind === 'turf'), ...atoms.filter(t => t.kind === 'obj'), ...atoms.filter(t => t.kind === 'mob')];
     order.forEach(({ a, kind }, stack) => {
       if (kind === 'area' && !areas) return;
+      const shown = keep(a.path, kind);
+      if (shown === 'hide') { bump('filtered-out', a.path); return; }
       const ap = appearance(a);
       if (ap.unknownType) { bump('unknown-type', a.path); sprites.push({ x, y, plane: 0, layer: KIND_LAYER[kind], stack, placeholder: true }); return; }
       if (!showInvisible && typeof ap.invisibility === 'number' && ap.invisibility > 0) { bump('invisible-skipped', a.path); return; }
       for (const v of ap.unresolved) bump('approximate-var', `${a.path}.${v}`);
       if (ap.icon == null) return; // no icon: nothing to draw, as in game
-      sprites.push({ x, y, plane: typeof ap.plane === 'number' ? ap.plane : 0, layer: typeof ap.layer === 'number' ? ap.layer : KIND_LAYER[kind], stack, ap, path: a.path });
+      sprites.push({ x, y, plane: typeof ap.plane === 'number' ? ap.plane : 0, layer: typeof ap.layer === 'number' ? ap.layer : KIND_LAYER[kind], stack, ap, path: a.path, dim: shown === 'dim' });
     });
   }
   // Draw order: plane, then layer, then position in the tile's stack, then south rows over north.
@@ -98,7 +101,8 @@ export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance
     const pixels = dmi.frame(state, typeof ap.dir === 'number' ? ap.dir : 2, 1, { display: true });
     const tint = parseColor(ap.color);
     if (tint === undefined) bump('approximate-var', `${s.path}.color`);
-    const alpha = typeof ap.alpha === 'number' ? Math.max(0, Math.min(255, Math.trunc(ap.alpha))) : 255; // builtin alpha stores an integer
+    let alpha = typeof ap.alpha === 'number' ? Math.max(0, Math.min(255, Math.trunc(ap.alpha))) : 255; // builtin alpha stores an integer
+    if (s.dim) alpha = Math.round(alpha * 0.25);
     const ox = baseX + (Number(ap.pixel_x) || 0) + (Number(ap.pixel_w) || 0);
     const oy = baseY + iconSize - dmi.height - (Number(ap.pixel_y) || 0) - (Number(ap.pixel_z) || 0); // icons anchor bottom-left
     blit(rgba, width, height, pixels, dmi.width, dmi.height, ox, oy, tint || null, alpha);
@@ -108,6 +112,22 @@ export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance
   const diagnostics = [...counts].map(([k, n]) => { const [code, detail] = k.split('\u0000'); return { code, detail, count: n }; })
     .sort((p, q) => p.code.localeCompare(q.code) || q.count - p.count || p.detail.localeCompare(q.detail));
   return { width, height, rgba, drawn, holes, diagnostics, truthLayer: 'authored-source+type-defaults' };
+}
+
+/**
+ * Atom filter for renderRegion. filter: {kinds, excludeKinds, types, excludeTypes, mode}.
+ * types match a path or any subtype. Returns (path, kind) -> 'show' | 'dim' | 'hide'.
+ */
+export function atomFilter(filter) {
+  if (!filter) return () => 'show';
+  const under = (path, roots) => roots.some(r => path === r || path.startsWith(r.endsWith('/') ? r : r + '/'));
+  const { kinds, excludeKinds, types, excludeTypes, mode = 'hide' } = filter;
+  if (mode !== 'hide' && mode !== 'dim') throw new TypeError('filter mode must be hide or dim');
+  return (path, kind) => {
+    const ok = (!kinds?.length || kinds.includes(kind)) && !excludeKinds?.includes(kind)
+      && (!types?.length || under(path, types)) && !(excludeTypes?.length && under(path, excludeTypes));
+    return ok ? 'show' : mode;
+  };
 }
 
 function blit(dst, dw, dh, src, sw, sh, ox, oy, tint, alpha) {
