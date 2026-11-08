@@ -10,11 +10,12 @@ import { editMapFile } from './edit-project.js';
 import { loadDiff, renderDiff } from './diff-project.js';
 import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
+import { findGenerators, markTiles, GENERATOR_PROFILES } from './generators.js';
 import { recordIngame, PROFILES } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -36,9 +37,12 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   prefab-extract: --map FILE --x1 N --y1 N --x2 N --y2 N --z N --out FILE.json [--layers movable,turf,area]
   prefab-place: --map FILE --prefab FILE.json --x N --y N --z N [--mode replace|overlay] [--out PATCH.json]
           makes an edit patch (base = the map's sha256); preview it with diff --patch, apply it with edit
-No DM execution or server access. Only render/diff/prefab --out, edit --apply and edit --inverse-out write files.`;
+  generators: --map FILE --dme FILE (--byond BIN | --tree FILE) [--profile default|civ13] [--roots /a,/b] [--z N] [--limit N]
+          [--out FILE.png --x1 N --y1 N --x2 N --y2 N --z N [--force]]
+          spawners, loot drops and landmarks: where they are and the types their vars name; --out marks them on a render
+No DM execution or server access. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -55,7 +59,7 @@ function integer(value, name, fallback) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -147,6 +151,31 @@ try {
       result={schemaVersion:1,provenance,data:opts.out?{out:opts.out,edits:out.edits.length,...out.prefab}:out};
     }
     if(opts.out) await writeFile(opts.out,JSON.stringify(out,null,1)+'\n',{flag:'wx'});
+  }
+  else if(command==='generators') {
+    if(!opts.map) throw new Error('--map is required'); if(!dme) throw new Error('--dme is required');
+    const profile=opts.profile??'default'; if(!GENERATOR_PROFILES[profile]) throw new Error(`--profile must be one of ${Object.keys(GENERATOR_PROFILES).join(', ')}`);
+    const roots=opts.roots?opts.roots.split(','):GENERATOR_PROFILES[profile].roots;
+    let region=null;
+    if(opts.out) {
+      if(!/\.png$/i.test(opts.out)) throw new Error('--out must name a .png file');
+      let exists=false; try { exists=!!(await lstat(opts.out)); } catch {}
+      if(exists && !opts.force) throw new Error(`${opts.out} exists; pass --force to overwrite`);
+      region={}; for(const k of ['x1','y1','x2','y2','z']) region[k]=integer(opts[k],k);
+    }
+    const renderer=await loadRenderer({root:opts.root,dme:opts.dme,binDir:opts.byond,treeFile:opts.tree});
+    const input=await readProjectFile(opts.root,opts.map), map=parseDmm(input.text.replace(/^\uFEFF/,''));
+    const found=findGenerators(map,renderer.tree,renderer.project.sourceLine,{roots,z:opts.z!==undefined?integer(opts.z,'z'):undefined,limit:integer(opts.limit,'limit',10000),defines:renderer.defines});
+    let image=null;
+    if(region) {
+      const r=await renderMap(renderer,{root:opts.root,mapText:map.source,...region,showInvisible:true});
+      const inRegion=[]; for(let y=region.y1;y<=region.y2;y++) for(let x=region.x1;x<=region.x2;x++) { const c=map.inspectCell(x,y,region.z); if(c && c.atoms.some(a=>renderer.tree.has(a.path) && roots.some(rt=>renderer.tree.isA(a.path,rt)))) inRegion.push({x,y,z:region.z}); }
+      const marked=markTiles(r.result,inRegion,region,renderer.iconSize);
+      await writeFile(opts.out,encodePng(r.result,{text:{Comment:'byond-devtools generator map: static render with invisible atoms shown, generator tiles outlined'}}),{flag:opts.force?'w':'wx'});
+      image={out:opts.out,width:r.result.width,height:r.result.height,region,marked,diagnostics:r.result.diagnostics};
+    }
+    result={schemaVersion:1,provenance:{map:opts.map,sha256:input.sha256,dme:renderer.project.dme,truthLayer:'authored-source+native-type-tree',profile},data:{...found,image,
+      limitations:['Spawn targets are read from var source text, not by running the generator; whether its code uses that var is not proven.','Generators made at runtime by other code (events, map metadata, ecology) are not listed.']}};
   }
   else if(command==='icon') {
     if(!opts.dmi) throw new Error('--dmi is required');

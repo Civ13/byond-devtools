@@ -70,7 +70,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
-5. Prefabs (done), generator-aware tools, spatial contracts and local agent API/MCP.
+5. Prefabs and generator-aware tools (done), spatial contracts and local agent API/MCP.
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
 
@@ -253,6 +253,26 @@ node src/cli.js edit --root R --map maps/b.dmm --patch patch.json --apply --inve
   prefab cells leave the tile alone. The prefab lists its `types`; run `lint` after applying
   when it came from another project. Rotation is not offered: `dir` values would need
   per-type knowledge to turn correctly.
+
+## Generators
+
+`generators` lists the map atoms that make other content when the world starts: spawners,
+loot drops, landmarks and (profile `civ13`) vehicle auto-assemblers. The static preview only
+shows their markers, so the report says what each one will produce, read from its vars:
+
+```sh
+node src/cli.js generators --root R --map maps/nomads/nomads_gaia.dmm --dme civ13.dme --byond BIN --profile civ13
+node src/cli.js generators ... --out gens.png --x1 420 --y1 300 --x2 470 --y2 340 --z 2   # markers outlined
+```
+
+- An atom is a generator when its type is a subtype of a profile root (`--roots` overrides).
+- For each generator type: instance count, `spawns` (each var whose source line or map
+  override is a type path or a `list(...)` of type paths, with pickweight weights and whether
+  each type exists), literal `settings` such as `max_number` or `max_range`, `unresolved`
+  expressions, and the init procs (`New`, `Initialize`, ...) its type chain defines.
+- Multi-line `list(` values are read across lines. Spawn targets come from source text, not
+  from running code, so whether the generator really uses a var is not proven.
+- `--out` renders the region with invisible atoms shown and outlines generator tiles in cyan.
 
 ## Native BYOND agreement
 
