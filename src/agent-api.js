@@ -24,7 +24,7 @@ import { checkContract, validateContract, needsTypes, densityResolver } from './
 import { compileProject } from './devrun-project.js';
 import { decodeDmi, DIR_ORDER, frameSequence } from './dmi.js';
 import { decodePng, encodePng, encodeApng } from './png.js';
-import { recordIngame, PROFILES } from './ingame.js';
+import { recordIngame, PROFILES, validateDump, loadDumpIcons } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { parseBackground, withBackground, scaleImage, drawBoxes, frameSheet, sideBySide, compareImages, ImageInputError } from './image.js';
 import { createHash } from 'node:crypto';
@@ -67,6 +67,7 @@ export const TOOLS = Object.freeze([
   { name: 'icon_render', description: 'PNG of one icon state: one dir and frame, with animate an animated PNG, or with sheet a grid of every dir (rows) by frame (columns). Give dmi + state, or a type to draw its default icon, state and dir.', inputSchema: obj({ dmi: { type: 'string' }, type: { type: 'string' }, state: { type: 'string' }, dir: { enum: Object.keys(DIRS) }, frame: { type: 'integer', minimum: 1 }, movement: { type: 'boolean' }, sheet: { type: 'boolean' }, animate: { type: 'boolean', description: 'Animated PNG of the state in this dir with its own delays, rewind and loop count' }, ...output }), annotations: { readOnlyHint: true } },
   { name: 'image_compare', description: 'Compare a PNG reference with a candidate (another PNG, or a static render of map + region). Returns differing pixel counts and bounds, and optionally a side | heatmap PNG.', inputSchema: obj({ reference: { type: 'string', description: 'Project-relative PNG, or a path this server wrote with file: true' }, candidate: { type: 'string', description: 'PNG path as for reference; omit to render map + region' }, ...regionProps, ...filters, threshold: { type: 'integer', minimum: 0, maximum: 255 }, show: { enum: ['side', 'heatmap', 'none'] }, ...output }, ['reference']), annotations: { readOnlyHint: true } },
   { name: 'ingame_render', description: 'Boot the game headless (RUNS GAME CODE in a temp folder: -safe, 127.0.0.1, no saves) and render the initialized world: runtime icons, overlays, colour matrices, planes and lighting. Needs the server started with --allow-game. Slow (a full compile and boot). At most 64x64 tiles.', inputSchema: obj({ ...region, map: { type: 'string', description: 'Optional map to select instead of the .dme\'s own' }, profile: { enum: PROFILES }, time_of_day: { type: 'string' }, boxes, ...output }, ['x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true, openWorldHint: false } },
+  { name: 'dump_render', description: 'Render an appearance dump in the ingame_render format, such as Civ13\'s character_view of a live character: appearance trees, colour matrices, planes and plane masters. Icons come inline as base64 or as project-relative source paths. At most 64x64 tiles; runs nothing.', inputSchema: obj({ dump: { type: 'object', description: '{region: [x1, y1, x2, y2, z], icon_size, appearances, icons, cells, plane_masters?, see_invisible?}' }, boxes, ...output }, ['dump']), annotations: { readOnlyHint: true } },
   { name: 'map_lint', description: 'Unknown types and overrides of undeclared vars, from the native type tree.', inputSchema: obj(mapArg, ['map']), annotations: { readOnlyHint: true } },
   { name: 'type_info', description: 'A type\'s parent chain, source location and resolved vars from the native type tree.', inputSchema: obj({ type: { type: 'string' } }, ['type']), annotations: { readOnlyHint: true } },
   { name: 'map_diff', description: 'Changed tiles between the map and a git revision, another map, or a patch dry run; optionally a before | after | changes PNG.', inputSchema: obj({ ...mapArg, git_ref: { type: 'string' }, before: { type: 'string' }, patch: { type: 'object' }, limit: { type: 'integer', minimum: 0, maximum: 10000 }, render: { type: 'boolean' } }, ['map']), annotations: { readOnlyHint: true } },
@@ -273,10 +274,19 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       checkRegion(a);
       const run = await recordIngame({ root, dme, map: a.map, binDir: byond, profile: a.profile ?? 'default', region: { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, z: a.z }, timeOfDay: a.time_of_day });
       if (run.status !== 'ok') throw Object.assign(new Error(`in-game run ${run.status}${run.failure ? `: ${run.failure}` : ''}`), { name: 'IngameRunError', postcondition: { compiler: run.compiler, runtime: run.runtime?.slice(-4000) } });
-      const icons = run.dump.icons.map(i => { try { return i.base64 ? decodeDmi(Buffer.from(i.base64, 'base64'), { plainPng: true }) : null; } catch { return null; } });
-      const r = renderIngame(run.dump, icons);
+      const r = renderIngame(run.dump, await loadDumpIcons(run.dump, root));
       const { png, image } = await finish(r, a, { comment: `byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`, region: a, iconSize: run.dump.icon_size });
       return { provenance: { ...run.dump.provenance, byond: run.dump.byond, region: run.dump.region, timeOfDay: run.dump.time_of_day, seconds: run.seconds, runtimeErrors: run.runtimeErrors },
+        data: { width: r.width, height: r.height, drawn: r.drawn, diagnostics: r.diagnostics, image,
+          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and screen objects'] }, png };
+    },
+    async dump_render(a) {
+      const dump = a.dump;
+      try { validateDump(dump); } catch (e) { throw new ToolInputError(e.message); }
+      const [x1, y1, x2, y2] = dump.region;
+      const r = renderIngame(dump, await loadDumpIcons(dump, root));
+      const { png, image } = await finish(r, a, { comment: `byond-devtools dump render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`, region: { x1, y1, x2, y2 }, iconSize: dump.icon_size });
+      return { provenance: { ...(dump.provenance || {}), byond: dump.byond ?? null, region: dump.region, timeOfDay: dump.time_of_day ?? null, truthLayer: dump.provenance?.truthLayer ?? 'live-appearance-dump' },
         data: { width: r.width, height: r.height, drawn: r.drawn, diagnostics: r.diagnostics, image,
           notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and screen objects'] }, png };
     },
