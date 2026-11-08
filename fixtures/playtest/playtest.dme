@@ -1,0 +1,2 @@
+// Playtest fixture project.
+#include "code/world.dm"

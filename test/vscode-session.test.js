@@ -26,3 +26,13 @@ test('without a type tree or BYOND the session explains what to configure', asyn
   const n = await openSession({ text, root: ROOT, mapRelative: 'maps/render.dmm', dme: null, treeFile: 'x', core });
   assert.match((await n.render({ x1: 1, y1: 1, x2: 1, y2: 1, z: 1 })).error, /No \.dme/);
 });
+
+test('compile and playtest reports become per-file problems', async () => {
+  const { toDiagnostics, missingSetup } = await import('../vscode/lib/devrun.mjs');
+  const m = toDiagnostics({ compile: { diagnostics: [{ file: 'code/a.dm', line: 3, severity: 'error', code: null, message: 'x: undefined var' }, { file: 'code/a.dm', line: 2, severity: 'warning', code: 'unused_var', message: 'unused' }] },
+    runtime: { unique: [{ message: 'Cannot read null.v', proc: 'boom (/obj/t/proc/boom)', file: 'code/b.dm', line: 7, count: 3, callStack: ['t: boom()'] }, { message: 'no file', proc: null, file: null, line: null, count: 1, callStack: [] }] } });
+  assert.deepEqual([...m.keys()], ['code/a.dm', 'code/b.dm']);
+  assert.deepEqual(m.get('code/a.dm').map(d => [d.line, d.severity, d.code]), [[3, 'error', undefined], [2, 'warning', 'unused_var']]);
+  assert.match(m.get('code/b.dm')[0].message, /^runtime error: Cannot read null\.v \(x3\)\nproc: boom/);
+  assert.match(missingSetup({ dme: 'x.dme' }), /byondBin/); assert.equal(missingSetup({ dme: 'x.dme', byondBin: '/b' }), null);
+});

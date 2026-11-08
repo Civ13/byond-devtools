@@ -71,8 +71,8 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
 5. Prefabs, generator-aware tools, spatial contracts and a local agent API/MCP server (done).
-6. Authorized native compiler/debugger/playtest integration, distinct from static
-   validation. No live-server or persistence actions by default.
+6. Authorized native compiler, runtime-error and profiler capture, and local playtests,
+   distinct from static validation; no live-server or persistence actions (done).
 
 ## Native type tree and lint
 
@@ -338,6 +338,34 @@ Or in a project's `.mcp.json`:
 - Map paths are project-relative with realpath containment, as in the CLI. The type tree is
   built once per server (restart it after changing DM code). Nothing runs game code.
 - The transport-free API is `createAgentApi()` in `src/agent-api.js`.
+
+## Compile and playtest
+
+These run your installed BYOND, distinct from the static checks above. Both work in a fresh
+temporary folder from a probe `.dme` that includes the checkout by absolute path, so nothing is
+written to the checkout.
+
+```sh
+node src/cli.js compile  --root /path/to/Civ13 --dme civ13.dme --byond BIN [--map maps/x.dmm]
+node src/cli.js playtest --root /path/to/Civ13 --dme civ13.dme --byond BIN --minutes 20 --profile-procs --follow
+```
+
+- `compile` runs DreamMaker only (no game code) and reports every error and warning with a
+  project-relative `file:line`, the warning code (`unused_var`, ...) and the `.dmb` size; exit
+  3 on errors. `--map` selects another map. Civ13 builds in about 10 s on a cloud runner.
+- `playtest` **runs the game**: DreamDaemon `-safe`, bound to 127.0.0.1, `-invisible`, with only
+  `config/` copied in and no save data, so it cannot reach a live server or its persistence. It
+  prints `byond://127.0.0.1:PORT` to join with Dream Seeker and stops `--minutes` (default 30)
+  after the world finishes loading, on Ctrl+C, or when the world shuts down.
+- The playtest probe compiles with `DEBUG`, so runtime errors carry their source line. They come
+  back grouped by message and location with counts, `src`, `usr` and the call stack.
+  `--profile-procs` adds BYOND's proc profiler (top procs by total time); a heartbeat records
+  CPU, map CPU and player count every 30 s.
+- There is no step debugger: BYOND has no debugger protocol to attach to, so the integration
+  is compiler diagnostics, runtime-error capture and the proc profiler.
+- The VS Code extension has **BYOND: Compile project** and **BYOND: Start local playtest**,
+  which put compile errors and runtime errors in the Problems panel. The MCP server offers
+  `project_compile`; it never starts a playtest.
 
 ## Native BYOND agreement
 

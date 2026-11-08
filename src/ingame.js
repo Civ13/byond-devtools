@@ -24,7 +24,8 @@ const dmString = s => '"' + s.replace(/[\\"\[\]]/g, c => '\\' + c) + '"';
  * to the checkout, an optional map swapped into the BEGIN/END_SELECTED_MAP block, then the
  * probe and the game profile appended.
  */
-export async function probeSource({ root, dme, map, profile = 'default' }) {
+export async function probeSource({ root, dme, map, profile = 'default', probe = 'ingame' }) {
+  if (!['ingame', 'playtest', 'none'].includes(probe)) throw new Error(`Unknown probe ${probe}`);
   if (!PROFILES.includes(profile)) throw new Error(`Unknown profile ${profile}; one of ${PROFILES.join(', ')}`);
   const file = await readProjectFile(root, dme, 16 * 1024 * 1024);
   const base = posix(path.dirname(path.join(file.projectRoot, file.relative)));
@@ -40,12 +41,14 @@ export async function probeSource({ root, dme, map, profile = 'default' }) {
   text = text.replace(/^([ \t]*#include\s+)"([^"]+)"/gm, (all, head, rel) => rel.startsWith('/') ? all : head + abs(rel));
   const rootDir = dmString(posix(file.projectRoot));
   text = /^#define\s+FILE_DIR\b.*$/m.test(text) ? text.replace(/^#define\s+FILE_DIR\b.*$/m, `#define FILE_DIR ${rootDir}`) : `#define FILE_DIR ${rootDir}\n${text}`;
-  const probe = await readFile(path.join(HERE, 'ingame-probe.dm'), 'utf8');
+  if (probe === 'none') return { text, dmeSha256: file.sha256, projectRoot: file.projectRoot };
+  if (probe === 'playtest') return { text: `${text}\n// ---- byond-devtools playtest probe ----\n${await readFile(path.join(HERE, 'playtest-probe.dm'), 'utf8')}`, dmeSha256: file.sha256, projectRoot: file.projectRoot };
+  const ingame = await readFile(path.join(HERE, 'ingame-probe.dm'), 'utf8');
   const prof = await readFile(path.join(HERE, 'ingame-profiles', `${profile}.dm`), 'utf8');
-  return { text: `${text}\n// ---- byond-devtools in-game probe ----\n${probe}\n${prof}`, dmeSha256: file.sha256 };
+  return { text: `${text}\n// ---- byond-devtools in-game probe ----\n${ingame}\n${prof}`, dmeSha256: file.sha256, projectRoot: file.projectRoot };
 }
 
-function run(cmd, args, { cwd, env, timeoutMs, onTick }) {
+export function run(cmd, args, { cwd, env, timeoutMs, onTick }) {
   return new Promise(resolve => {
     const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', timedOut = false;
