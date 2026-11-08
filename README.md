@@ -70,7 +70,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
-5. Prefabs, generator-aware tools and spatial contracts (done), and local agent API/MCP.
+5. Prefabs, generator-aware tools, spatial contracts and a local agent API/MCP server (done).
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
 
@@ -307,6 +307,37 @@ node src/cli.js edit  --root R --map maps/x.dmm --patch p.json --contract c.json
   endpoint is blocked and by what), and for a leaking room the first tile outside and the way out.
 - A static walk over authored tiles: `Bump()`, `CanPass()`, door locks, runtime spawns and
   stairs are not modelled. On Gaia a 242-step walk across z2 checks in under 2 s.
+
+## Agent API (MCP)
+
+`src/mcp.js` serves the same core as tools over the Model Context Protocol (stdio), for one
+project root, so an agent can inspect, render, diff, place prefabs, check contracts and edit
+maps without shelling out to the CLI.
+
+```sh
+node src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond /path/to/byond/bin            # read-only
+node src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond /path/to/byond/bin --allow-write
+claude mcp add byond-map -- node /path/to/byond-devtools/src/mcp.js --root /path/to/Civ13 --dme civ13.dme --byond BIN
+```
+
+Or in a project's `.mcp.json`:
+
+```json
+{ "mcpServers": { "byond-map": { "command": "node",
+    "args": ["D:/GitHub/byond-devtools/src/mcp.js", "--root", "D:/GitHub/Civ13", "--dme", "civ13.dme",
+             "--byond", "C:/Program Files (x86)/BYOND/bin"] } } }
+```
+
+- Tools: `map_summary`, `map_cell`, `map_find`, `map_render` (PNG image, at most 64x64 tiles),
+  `map_lint`, `type_info`, `map_diff` (optionally rendered), `map_edit`, `prefab_extract`,
+  `prefab_place`, `map_generators`, `map_check`. Inputs are validated against each tool's
+  schema; unknown arguments are refused. Failures come back as tool errors the model can read.
+- Read-only by default. `map_edit` with `apply: true` needs `--allow-write`, and then still
+  requires the patch's base sha256 and expected stacks, verifies the result, and refuses the
+  write if an optional `contract` fails. Read-only tools are annotated `readOnlyHint`.
+- Map paths are project-relative with realpath containment, as in the CLI. The type tree is
+  built once per server (restart it after changing DM code). Nothing runs game code.
+- The transport-free API is `createAgentApi()` in `src/agent-api.js`.
 
 ## Native BYOND agreement
 

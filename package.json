@@ -8,13 +8,15 @@
     "node": ">=22"
   },
   "bin": {
-    "byond-map": "src/cli.js"
+    "byond-map": "src/cli.js",
+    "byond-map-mcp": "src/mcp.js"
   },
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check.js",
     "corpus": "node scripts/corpus.js",
-    "native": "node scripts/native.js"
+    "native": "node scripts/native.js",
+    "mcp": "node src/mcp.js"
   },
   "license": "AGPL-3.0-only"
 }
