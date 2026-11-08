@@ -65,3 +65,30 @@ test('live: re-recording the fixture in DreamDaemon gives the checked-in dump (s
   const { world_time, provenance, ...live } = run.dump, { provenance: p2, ...want } = dump;
   assert.deepEqual(live, want);
 });
+
+test('screen objects are placed by screen_loc and clickable atoms that draw nothing are listed', async () => {
+  const { parseScreenLoc, viewSize } = await import('../src/ingame-render.js');
+  assert.deepEqual(viewSize(7), [15, 15]); assert.deepEqual(viewSize('19x15'), [19, 15]);
+  assert.deepEqual(parseScreenLoc('EAST-1:16,NORTH', [15, 15]), [{ tx: 14, ty: 15, px: 16, py: 0 }]);
+  assert.deepEqual(parseScreenLoc('NORTH,WEST', [15, 15]), [{ tx: 1, ty: 15, px: 0, py: 0 }]);
+  assert.equal(parseScreenLoc('WEST,SOUTH to EAST,SOUTH', [15, 15]).length, 15);
+  assert.deepEqual(parseScreenLoc('CENTER,CENTER', [16, 15]), [{ tx: 8, ty: 8, px: 16, py: 0 }]);
+  assert.equal(parseScreenLoc('minimap:1,1', [15, 15]), null);
+  assert.equal(parseScreenLoc('nonsense', [15, 15]), null);
+
+  const d = structuredClone(dump), [x1, y1, x2, y2] = d.region;
+  const mobApp = d.cells.flatMap(c => c[4]).find(m => m[3]?.startsWith('/mob'))?.[0] ?? d.cells[0][4][0][0];
+  // A screen object on the bottom-left tile of a view that matches the region.
+  d.view = `${x2 - x1 + 1}x${y2 - y1 + 1}`; d.center = [x1 + Math.floor((x2 - x1) / 2), y1 + Math.floor((y2 - y1) / 2)];
+  d.screen = [[mobApp, 'WEST,SOUTH'], [mobApp, 'secondmap:1,1']];
+  const withScreen = renderIngame(d, icons);
+  assert.equal(withScreen.drawn, r.drawn + 1);
+  assert.ok(withScreen.diagnostics.some(x => x.code === 'screen-loc-skipped'));
+  // Two movables whose icon state does not exist: the clickable one is listed, the other is not.
+  const ghost = { ...d.appearances[mobApp - 1], icon_state: 'no-such-state', overlays: [], underlays: [] };
+  d.appearances.push(ghost, { ...ghost, mouse_opacity: 0 });
+  d.cells[0][4].push([d.appearances.length - 1, 0, 0, '/obj/unseen'], [d.appearances.length, 0, 0, '/obj/decal']);
+  const checked = renderIngame(d, icons);
+  assert.deepEqual(checked.undrawn, [{ x: d.cells[0][0], y: d.cells[0][1], type: '/obj/unseen' }]);
+  assert.equal(r.undrawnCount, 0, JSON.stringify(r.undrawn));
+});

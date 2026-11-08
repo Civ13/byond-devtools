@@ -15,7 +15,7 @@ import { checkContract, validateContract, needsTypes, densityResolver } from './
 import { compileProject, playtest } from './devrun-project.js';
 import { recordIngame, PROFILES, validateDump, loadDumpIcons } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
-import { encodePng } from './png.js';
+import { encodePng, encodeApng } from './png.js';
 import { diffIcons } from './icon-diff.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
 const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check|compile|playtest|icon-diff> --root DIR --map FILE [--dme FILE]
@@ -29,9 +29,11 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           [--grid N] [--areas] [--show-invisible] [--icon-size N] [--force]
           static preview from authored source + type defaults (not a client screenshot); at most 128x128 tiles
   ingame: --dme FILE --byond BIN --out FILE.png --x1 N --y1 N --x2 N --y2 N --z N [--profile default|civ13]
-          [--map FILE] [--time-of-day NAME] [--save-dump FILE.json] [--force]   or: --dump FILE.json --out FILE.png
+          [--map FILE] [--time-of-day NAME] [--save-dump FILE.json] [--force]   or: --dump FILE.json[,FILE2.json...] --out FILE.png [--interval-ms N]
           (a dump's icons are inline base64 or project-relative source paths read from --root, so a
-          live game's dump, such as Civ13's character_view, renders the same way)
+          live game's dump, such as Civ13's character_view, renders the same way; several dumps make an
+          animated PNG, one frame each; screen objects in a dump are drawn; undrawn lists clickable atoms
+          that put no pixel on the map)
           boots the game headless in a temp folder (RUNS GAME CODE: -safe, 127.0.0.1, no saves) and renders the
           initialized world: runtime icons, overlays, colour matrices, planes and lighting
   edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json] [--contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]]
@@ -57,7 +59,7 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           Stops after --minutes (default 30) or Ctrl+C; reports runtime errors with source lines and the proc profile
 Apart from ingame and playtest, nothing runs DM code or touches a server. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold','interval-ms']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -123,8 +125,12 @@ try {
     const exists=async f=>{ try { return !!(await lstat(f)); } catch { return false; } };
     if(await exists(opts.out) && !opts.force) throw new Error(`${opts.out} exists; pass --force to overwrite`);
     if(opts['save-dump'] && await exists(opts['save-dump'])) throw new Error(`${opts['save-dump']} exists`);
-    let dump, run=null;
-    if(opts.dump) dump=JSON.parse(await readFile(opts.dump,'utf8'));
+    let dump, run=null, more=[];
+    if(opts.dump) {
+      // Several dumps (comma-separated, e.g. character_view snapshots over time) make an animated PNG.
+      const files=String(opts.dump).split(',').filter(Boolean); if(files.length>60) throw new Error('At most 60 dumps');
+      [dump,...more]=await Promise.all(files.map(async f=>JSON.parse(await readFile(f,'utf8'))));
+    }
     else {
       if(!dme) throw new Error('--dme is required'); if(!opts.byond) throw new Error('--byond is required');
       const profile=opts.profile??'default'; if(!PROFILES.includes(profile)) throw new Error(`--profile must be one of ${PROFILES.join(', ')}`);
@@ -134,12 +140,21 @@ try {
       dump=run.dump;
       if(opts['save-dump']) await writeFile(opts['save-dump'],JSON.stringify(dump)+'\n',{flag:'wx'});
     }
-    validateDump(dump,{maxTiles:128*128});
+    validateDump(dump,{maxTiles:128*128}); for(const d of more) validateDump(d,{maxTiles:128*128});
     const r=renderIngame(dump,await loadDumpIcons(dump,opts.root));
-    await writeFile(opts.out,encodePng(r,{text:{Comment:`byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`}}),{flag:opts.force?'w':'wx'});
+    const comment=`byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`;
+    let animation=null;
+    if(more.length) {
+      const frames=[r]; for(const d of more) frames.push(renderIngame(d,await loadDumpIcons(d,opts.root)));
+      const interval=integer(opts['interval-ms'],'interval-ms',1000);
+      const width=Math.max(...frames.map(f=>f.width)), height=Math.max(...frames.map(f=>f.height));
+      const fit=f=>{ if(f.width===width&&f.height===height) return f.rgba; const out=new Uint8Array(width*height*4); for(let y=0;y<f.height;y++) out.set(f.rgba.subarray(y*f.width*4,(y+1)*f.width*4),y*width*4); return out; };
+      await writeFile(opts.out,encodeApng(frames.map(fit),{width,height,delaysMs:frames.map(()=>interval),text:{Comment:comment}}),{flag:opts.force?'w':'wx'});
+      animation={frames:frames.length,intervalMs:interval,width,height,undrawnPerFrame:frames.map(f=>f.undrawnCount)};
+    } else await writeFile(opts.out,encodePng(r,{text:{Comment:comment}}),{flag:opts.force?'w':'wx'});
     result={schemaVersion:1,provenance:{...dump.provenance,byond:dump.byond,region:dump.region,timeOfDay:dump.time_of_day,seconds:run?.seconds??null,runtimeErrors:run?.runtimeErrors??null},
-      data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,diagnostics:r.diagnostics,
-        notModelled:['filters (incl. client ambient occlusion)','maptext','vis_contents','animation past frame 1','KEEP_TOGETHER groups','client.color and screen objects']}};
+      data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,diagnostics:r.diagnostics,undrawn:r.undrawn,undrawnCount:r.undrawnCount,animation,
+        notModelled:['filters (incl. client ambient occlusion)','maptext','vis_contents','animation past frame 1','KEEP_TOGETHER groups','client.color and secondary-map screen objects']}};
   }
   else if(command==='edit') {
     if(!opts.map) throw new Error('--map is required'); if(!opts.patch) throw new Error('--patch is required');

@@ -4,8 +4,14 @@
  * transform), colour matrices, blend modes, planes and plane masters, see_invisible.
  * Pure: the caller passes decoded icons. Works in premultiplied float RGBA.
  *
+ * Screen objects (dump.screen: [appearance, screen_loc] pairs from client.screen, with
+ * dump.view as the client's view size) are placed by screen_loc around the dump's centre and
+ * sorted into the same planes as the map. The result also lists `undrawn`: visible, clickable
+ * movables whose whole appearance tree put no pixel on the map (an atom a player can interact
+ * with but cannot see).
+ *
  * Not modelled (counted in diagnostics): filters, maptext, vis_contents, animation past
- * frame 1, KEEP_TOGETHER groups, per-client screen objects and client.color.
+ * frame 1, KEEP_TOGETHER groups, secondary-map screen objects and client.color.
  */
 const FLOAT_LAYER = -1, FLOAT_PLANE = -32767;
 const RESET_COLOR = 2, RESET_ALPHA = 4, RESET_TRANSFORM = 8, KEEP_TOGETHER = 32;
@@ -73,6 +79,62 @@ function blendPixel(dst, i, sr, sg, sb, sa, mode) {
  * dump: from recordIngame. icons: array (by dump icon index - 1) of decoded DMIs or null.
  * Returns {width, height, rgba (Uint8Array), drawn, diagnostics, truthLayer}.
  */
+const DIR_KEYS = { WEST: ['x', 'min'], LEFT: ['x', 'min'], EAST: ['x', 'max'], RIGHT: ['x', 'max'], SOUTH: ['y', 'min'], BOTTOM: ['y', 'min'], NORTH: ['y', 'max'], TOP: ['y', 'max'] };
+const MAX_SCREEN_TILES = 2048;
+
+/** A client's view size [width, height] in tiles from client.view (a radius number or "WxH"). */
+export function viewSize(view, fallback = [15, 15]) {
+  if (Number.isFinite(view) && view >= 0) return [2 * Math.floor(view) + 1, 2 * Math.floor(view) + 1];
+  const m = /^\s*(\d+)\s*x\s*(\d+)\s*$/i.exec(String(view ?? ''));
+  return m ? [Number(m[1]), Number(m[2])] : fallback;
+}
+
+/**
+ * Tiles a screen_loc covers on a view of [w, h] tiles: [{tx, ty, px, py}] with tx, ty 1-based
+ * from the bottom left. Understands numbers, WEST/EAST/NORTH/SOUTH/CENTER (and LEFT/RIGHT/TOP/
+ * BOTTOM) with +N/-N, :pixel offsets, either axis order for direction words and "a to b" ranges.
+ * Returns null for what it cannot place (secondary maps, unknown words).
+ */
+export function parseScreenLoc(loc, [w, h], iconSize = 32) {
+  if (typeof loc !== 'string' || !loc.trim()) return null;
+  const part = text => {
+    const pieces = text.trim().split(/\s+to\s+/i);
+    if (pieces.length > 2) return null;
+    const corners = pieces.map(corner => {
+      const xy = corner.split(',');
+      if (xy.length !== 2) return null;
+      let [a, b] = xy.map(v => v.trim());
+      const word = v => DIR_KEYS[(/^([A-Z]+)/.exec(v) || [])[1]]?.[0];
+      if (word(a) === 'y' || word(b) === 'x') [a, b] = [b, a];
+      const axis = (v, size, name) => {
+        const m = /^(?:([A-Z]+)|(-?\d+(?:\.\d+)?))\s*([+-]\s*\d+(?:\.\d+)?)?\s*(?::\s*(-?\d+))?$/.exec(v);
+        if (!m) return null;
+        let t;
+        if (m[1]) {
+          if (m[1] === 'CENTER') t = (size + 1) / 2;
+          else { const k = DIR_KEYS[m[1]]; if (!k || k[0] !== name) return null; t = k[1] === 'min' ? 1 : size; }
+        } else t = Number(m[2]);
+        if (m[3]) t += Number(m[3].replace(/\s+/g, ''));
+        const whole = Math.floor(t);
+        return { t: whole, p: Math.round((t - whole) * iconSize) + (m[4] ? Number(m[4]) : 0) };
+      };
+      const x = axis(a, w, 'x'), y = axis(b, h, 'y');
+      return x && y ? { x, y } : null;
+    });
+    if (corners.some(c => !c)) return null;
+    const [c1, c2 = c1] = corners, out = [];
+    for (let ty = Math.min(c1.y.t, c2.y.t); ty <= Math.max(c1.y.t, c2.y.t); ty++) for (let tx = Math.min(c1.x.t, c2.x.t); tx <= Math.max(c1.x.t, c2.x.t); tx++) {
+      out.push({ tx, ty, px: c1.x.p, py: c1.y.p });
+      if (out.length > MAX_SCREEN_TILES) return out;
+    }
+    return out;
+  };
+  if (/^[A-Za-z_][\w]*:(?![-\d\s])/.test(loc.trim()) && !/^(WEST|EAST|NORTH|SOUTH|CENTER|LEFT|RIGHT|TOP|BOTTOM)/.test(loc.trim())) return null; // secondary map
+  const all = [];
+  for (const piece of loc.split(/\s*;\s*/)) { if (!piece.trim()) continue; const r = part(piece); if (!r) return null; all.push(...r); }
+  return all;
+}
+
 export function renderIngame(dump, icons, { maxPixels = 16 * 1024 * 1024 } = {}) {
   const [x1, y1, x2, y2] = dump.region, size = dump.icon_size;
   const width = (x2 - x1 + 1) * size, height = (y2 - y1 + 1) * size;
@@ -111,13 +173,34 @@ export function renderIngame(dump, icons, { maxPixels = 16 * 1024 * 1024 } = {})
     a.overlays.forEach(o => expand(o, node, ctx));
   }
   let atomIndex = 0;
+  const atoms = []; // per atom index: null, or a movable {x, y, type, clickable} watched for undrawn
   for (const [x, y, area, turf, movables] of dump.cells) {
     const base = { x, y, px: 0, py: 0 };
     const visible = id => (apps[id - 1]?.invisibility ?? 0) <= see;
-    if (visible(area)) expand(area, null, { ...base, atom: atomIndex++ });
-    if (visible(turf)) expand(turf, null, { ...base, atom: atomIndex++ });
-    for (const [id, sx, sy] of movables) if (visible(id)) expand(id, null, { ...base, px: sx || 0, py: sy || 0, atom: atomIndex++ });
+    if (visible(area)) { atoms.push(null); expand(area, null, { ...base, atom: atomIndex++ }); }
+    if (visible(turf)) { atoms.push(null); expand(turf, null, { ...base, atom: atomIndex++ }); }
+    for (const [id, sx, sy, type] of movables) if (visible(id)) {
+      atoms.push({ x, y, type: type ?? null, clickable: (apps[id - 1]?.mouse_opacity ?? 1) !== 0 });
+      expand(id, null, { ...base, px: sx || 0, py: sy || 0, atom: atomIndex++ });
+    }
   }
+  // Screen objects: screen_loc tiles of the client's view, centred on the dump's centre.
+  if (Array.isArray(dump.screen) && dump.screen.length) {
+    const [vw, vh] = viewSize(dump.view, [x2 - x1 + 1, y2 - y1 + 1]);
+    const [cx, cy] = Array.isArray(dump.center) ? dump.center : [Math.round((x1 + x2) / 2), Math.round((y1 + y2) / 2)];
+    const ox = cx - Math.floor((vw - 1) / 2) - 1, oy = cy - Math.floor((vh - 1) / 2) - 1;
+    let placed = 0;
+    for (const [id, loc] of dump.screen) {
+      const tiles = parseScreenLoc(loc, [vw, vh], size);
+      if (!tiles) { bump('screen-loc-skipped', String(loc).slice(0, 60)); continue; }
+      for (const t of tiles) {
+        if (placed++ >= MAX_SCREEN_TILES) { bump('screen-tiles-capped', String(MAX_SCREEN_TILES)); break; }
+        atoms.push(null);
+        expand(id, null, { x: ox + t.tx, y: oy + t.ty, px: t.px, py: t.py, atom: atomIndex++, screen: true });
+      }
+    }
+  }
+  const pixelsOf = new Uint32Array(atomIndex);
   // Plane, layer, south over north, then the atom's own order (contents order, then
   // underlays/self/overlays).
   sprites.sort((p, q) => p.plane - q.plane || p.layer - q.layer || q.y - p.y || p.atom - q.atom || p.seq - q.seq || p.x - q.x);
@@ -161,7 +244,7 @@ export function renderIngame(dump, icons, { maxPixels = 16 * 1024 * 1024 } = {})
       if (s.matrix) c = applyMatrix(s.matrix, ...c);
       return c;
     };
-    const put = (tx, ty, c) => { if (!c || !c[3] || tx < 0 || ty < 0 || tx >= width || ty >= height) return; blendPixel(dst, (ty * width + tx) * 4, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3], s.blend); };
+    const put = (tx, ty, c) => { if (!c || !c[3] || tx < 0 || ty < 0 || tx >= width || ty >= height) return; if (c[3] > 0.02) pixelsOf[s.atom]++; blendPixel(dst, (ty * width + tx) * 4, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3], s.blend); };
     if (!s.transform) { for (let iy = 0; iy < sh; iy++) for (let ix = 0; ix < sw; ix++) put(baseX + ix, baseY + iy, sample(ix, iy)); return; }
     // Transformed: inverse-map each destination pixel (nearest neighbour) about the icon centre.
     const [a, b, c, d, e, f] = s.transform, det = a * e - b * d;
@@ -183,5 +266,7 @@ export function renderIngame(dump, icons, { maxPixels = 16 * 1024 * 1024 } = {})
   }
   const diagnostics = [...counts].map(([k, n]) => { const [code, detail] = k.split('\u0000'); return { code, detail, count: n }; })
     .sort((p, q) => p.code.localeCompare(q.code) || q.count - p.count || p.detail.localeCompare(q.detail));
-  return { width, height, rgba, drawn, diagnostics, truthLayer: 'native-initialized-world' };
+  const undrawn = [];
+  for (let i = 0; i < atoms.length; i++) if (atoms[i]?.clickable && !pixelsOf[i]) { const { x, y, type } = atoms[i]; undrawn.push({ x, y, type }); }
+  return { width, height, rgba, drawn, diagnostics, undrawn: undrawn.slice(0, 200), undrawnCount: undrawn.length, truthLayer: 'native-initialized-world' };
 }

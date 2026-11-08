@@ -68,7 +68,7 @@ export const TOOLS = Object.freeze([
   { name: 'icon_diff', description: 'Compare a .dmi with its version at a git revision (default HEAD) or with another .dmi, state by state: added, removed and changed states (size, dirs, frames, delays, pixels), and a PNG with one row per changed state: before | after | heatmap.', inputSchema: obj({ dmi: { type: 'string', description: 'Project-relative .dmi (the "after" side)' }, git_ref: { type: 'string', description: 'Revision for the "before" side (default HEAD)' }, before: { type: 'string', description: 'Another project-relative .dmi as the "before" side, instead of git_ref' }, threshold: { type: 'integer', minimum: 0, maximum: 255 }, max_rows: { type: 'integer', minimum: 1, maximum: 200, description: 'Rows in the picture (default 40)' }, ...output }, ['dmi']), annotations: { readOnlyHint: true } },
   { name: 'image_compare', description: 'Compare a PNG reference with a candidate (another PNG, or a static render of map + region). Returns differing pixel counts and bounds, and optionally a side | heatmap PNG.', inputSchema: obj({ reference: { type: 'string', description: 'Project-relative PNG, or a path this server wrote with file: true' }, candidate: { type: 'string', description: 'PNG path as for reference; omit to render map + region' }, ...regionProps, ...filters, threshold: { type: 'integer', minimum: 0, maximum: 255 }, show: { enum: ['side', 'heatmap', 'none'] }, ...output }, ['reference']), annotations: { readOnlyHint: true } },
   { name: 'ingame_render', description: 'Boot the game headless (RUNS GAME CODE in a temp folder: -safe, 127.0.0.1, no saves) and render the initialized world: runtime icons, overlays, colour matrices, planes and lighting. Needs the server started with --allow-game. Slow (a full compile and boot). At most 64x64 tiles.', inputSchema: obj({ ...region, map: { type: 'string', description: 'Optional map to select instead of the .dme\'s own' }, profile: { enum: PROFILES }, time_of_day: { type: 'string' }, boxes, ...output }, ['x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true, openWorldHint: false } },
-  { name: 'dump_render', description: 'Render an appearance dump in the ingame_render format, such as Civ13\'s character_view of a live character: appearance trees, colour matrices, planes and plane masters. Icons come inline as base64 or as project-relative source paths. At most 64x64 tiles; runs nothing.', inputSchema: obj({ dump: { type: 'object', description: '{region: [x1, y1, x2, y2, z], icon_size, appearances, icons, cells, plane_masters?, see_invisible?}' }, boxes, ...output }, ['dump']), annotations: { readOnlyHint: true } },
+  { name: 'dump_render', description: 'Render an appearance dump in the ingame_render format, such as Civ13\'s character_view of a live character: appearance trees, colour matrices, planes and plane masters. Icons come inline as base64 or as project-relative source paths. Screen objects (dump.screen with screen_loc) are drawn; undrawn lists clickable atoms that put no pixel on the map. At most 64x64 tiles; runs nothing.', inputSchema: obj({ dump: { type: 'object', description: '{region: [x1, y1, x2, y2, z], icon_size, appearances, icons, cells, plane_masters?, see_invisible?, screen?, view?, center?}' }, dumps: { type: 'array', maxItems: 30, items: { type: 'object' }, description: 'Several dumps (snapshots over time) instead of dump: an animated PNG, one frame each' }, interval_ms: { type: 'integer', minimum: 10, maximum: 60000, description: 'Frame time with dumps (default 1000)' }, boxes, ...output }), annotations: { readOnlyHint: true } },
   { name: 'map_lint', description: 'Unknown types and overrides of undeclared vars, from the native type tree.', inputSchema: obj(mapArg, ['map']), annotations: { readOnlyHint: true } },
   { name: 'type_info', description: 'A type\'s parent chain, source location and resolved vars from the native type tree.', inputSchema: obj({ type: { type: 'string' } }, ['type']), annotations: { readOnlyHint: true } },
   { name: 'map_diff', description: 'Changed tiles between the map and a git revision, another map, or a patch dry run; optionally a before | after | changes PNG.', inputSchema: obj({ ...mapArg, git_ref: { type: 'string' }, before: { type: 'string' }, patch: { type: 'object' }, limit: { type: 'integer', minimum: 0, maximum: 10000 }, render: { type: 'boolean' } }, ['map']), annotations: { readOnlyHint: true } },
@@ -289,14 +289,25 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
           notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and screen objects'] }, png };
     },
     async dump_render(a) {
-      const dump = a.dump;
-      try { validateDump(dump); } catch (e) { throw new ToolInputError(e.message); }
-      const [x1, y1, x2, y2] = dump.region;
-      const r = renderIngame(dump, await loadDumpIcons(dump, root));
-      const { png, image } = await finish(r, a, { comment: `byond-devtools dump render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`, region: { x1, y1, x2, y2 }, iconSize: dump.icon_size });
+      if (!a.dump === !a.dumps?.length) throw new ToolInputError('Give exactly one of dump or dumps');
+      const dumps = a.dumps ?? [a.dump];
+      try { for (const d of dumps) validateDump(d); } catch (e) { throw new ToolInputError(e.message); }
+      const dump = dumps[0], [x1, y1, x2, y2] = dump.region;
+      const renders = [];
+      for (const d of dumps) renders.push(renderIngame(d, await loadDumpIcons(d, root)));
+      const r = renders[0], comment = `byond-devtools dump render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`;
+      let out;
+      if (renders.length > 1) {
+        // Snapshots of a moving character can differ in size at the map edge: pad to the largest.
+        const width = Math.max(...renders.map(f => f.width)), height = Math.max(...renders.map(f => f.height));
+        const fit = f => { if (f.width === width && f.height === height) return f; const rgba = new Uint8Array(width * height * 4); for (let y = 0; y < f.height; y++) rgba.set(f.rgba.subarray(y * f.width * 4, (y + 1) * f.width * 4), y * width * 4); return { width, height, rgba }; };
+        const interval = a.interval_ms ?? 1000;
+        out = await finishAnimation(renders.map(fit), renders.map(() => interval), 0, a, { comment });
+      } else out = await finish(r, a, { comment, region: { x1, y1, x2, y2 }, iconSize: dump.icon_size });
       return { provenance: { ...(dump.provenance || {}), byond: dump.byond ?? null, region: dump.region, timeOfDay: dump.time_of_day ?? null, truthLayer: dump.provenance?.truthLayer ?? 'live-appearance-dump' },
-        data: { width: r.width, height: r.height, drawn: r.drawn, diagnostics: r.diagnostics, image,
-          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and screen objects'] }, png };
+        data: { width: r.width, height: r.height, drawn: r.drawn, diagnostics: r.diagnostics, undrawn: r.undrawn, undrawnCount: r.undrawnCount, image: out.image,
+          frames: renders.length > 1 ? renders.map(f => ({ drawn: f.drawn, undrawnCount: f.undrawnCount })) : undefined,
+          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and secondary-map screen objects'] }, png: out.png };
     },
     async map_lint({ map }) {
       const r = await renderer(), { input, parsed } = await readMap(map);
