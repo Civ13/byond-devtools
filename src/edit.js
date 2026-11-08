@@ -19,10 +19,10 @@ export class EditError extends Error {
 }
 
 const BASE52 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-const keyToNum = k => [...k].reduce((n, c) => n * 52 + BASE52.indexOf(c), 0);
-const numToKey = (n, width) => { let s = ''; for (let i = 0; i < width; i++) { s = BASE52[n % 52] + s; n = Math.floor(n / 52); } return s; };
+export const keyToNum = k => [...k].reduce((n, c) => n * 52 + BASE52.indexOf(c), 0);
+export const numToKey = (n, width) => { let s = ''; for (let i = 0; i < width; i++) { s = BASE52[n % 52] + s; n = Math.floor(n / 52); } return s; };
 // BYOND accepts at most 65534 dictionary keys; mapmerge2 stays under 65530.
-const maxKeys = width => Math.min(65530, 52 ** width);
+export const maxKeys = width => Math.min(65530, 52 ** width);
 
 /** Remove whitespace outside quotes and a trailing `;` inside override braces. */
 export function compactAtom(raw) {
@@ -36,10 +36,10 @@ export function compactAtom(raw) {
   }
   return out.replace(/;}$/, '}');
 }
-const compactStack = atoms => atoms.map(a => compactAtom(typeof a === 'string' ? a : a.raw)).join(',');
+export const compactStack = atoms => atoms.map(a => compactAtom(typeof a === 'string' ? a : a.raw)).join(',');
 
 /** mapmerge2's internal form: `path{k = v;k2 = v2}`. Rejects anything that is not `k = v` pairs. */
-function canonicalAtom(text) {
+export function canonicalAtom(text) {
   const parsed = parseDmm(`"a" = (${text})\n(1,1,1) = {"\na\n"}\n`).definitions[0].atoms;
   if (parsed.length !== 1) throw new EditError(`Expected one atom, got ${parsed.length}: ${text}`);
   const a = parsed[0];
@@ -68,7 +68,7 @@ function formatAtom(canonical, style) {
   parts.push(part);
   return style.tgm ? `${canonical.slice(0, brace)}{${style.eol}\t${parts.join(`;${style.eol}\t`)}${style.eol}\t}` : `${canonical.slice(0, brace)}{${parts.join('; ')}}`;
 }
-function formatDefinition(key, atoms, style) {
+export function formatDefinition(key, atoms, style) {
   return style.tgm ? `"${key}" = (${style.eol}${atoms.map(a => formatAtom(a, style)).join(`,${style.eol}`)})${style.eol}`
     : `"${key}" = (${atoms.map(a => formatAtom(a, style)).join(',')})${style.eol}`;
 }

@@ -23,6 +23,9 @@ resources and prompts, and the CLI gains `icon-diff` for sprite review. v0.3.0 a
 highlighting, animated states, icon renders, animated PNGs, image comparison and in-game renders
 (see [Agent API (MCP)](#agent-api-mcp)).
 
+Next, v0.5.0 (on `main`, not yet tagged): [map resize](#resize-a-map) in the CLI (`resize`), MCP
+(`map_resize`) and VS Code (**BYOND: Resize map**).
+
 ## Core parser
 
 - Dependency-free ECMAScript modules on Node.js 22+.
@@ -237,13 +240,34 @@ node src/cli.js edit --root /path/to/Civ13 --map maps/x.dmm --patch patch.json -
   `orphanedKeys`. When every key of the current width is taken the edit is refused, since
   widening keys would rewrite the whole grid.
 - Overrides must be `name = value` pairs. A tile with two areas is refused (DreamMaker
-  rejects it). Cells outside the existing blocks cannot be added.
+  rejects it). Cells outside the existing blocks cannot be added; use `resize` for that.
 - The output is re-parsed: the world size, every old dictionary entry and every untouched
   cell must be identical, and edited cells must hold the new stacks.
 - `--apply` writes a temp file beside the map, flushes and re-hashes it, re-hashes the
   original to catch concurrent changes, then renames it over the map. A UTF-8 BOM is kept.
 - The inverse patch (`base` = the new hash) restores every cell. It is not byte-for-byte:
   the new dictionary entries stay, unused.
+
+## Resize a map
+
+`resize` changes a map's size, adds or removes levels, and fills holes between grid blocks.
+It is a dry run unless `--apply` is passed.
+
+```sh
+node src/cli.js resize --root /path/to/Civ13 --map maps/x.dmm --max-x 120 --max-y 100 --fill "/turf/floor/dirt,/area/caribbean/nomads"
+node src/cli.js resize --root /path/to/Civ13 --map maps/x.dmm --max-x 120 --offset-x 20 --fill "..." --base <sha256> --apply
+```
+
+- Unset axes keep their size. `--offset-x`/`--offset-y` move the existing tiles, so a
+  positive offset grows the map west or south. New space and holes get the `--fill` stack
+  (one turf and exactly one area); tiles moved past the new edge are cropped.
+- The dictionary is kept byte for byte. The fill reuses an identical existing entry, or takes
+  the lowest free key in key order. The grid is rewritten as complete blocks in the map's own
+  style (one block per level, or one column per block for TGM) with its line endings, so a
+  resize to the same size is byte-identical. Unused entries are kept and reported.
+- The output is re-parsed and every tile is checked: kept tiles hold their old stacks at the
+  moved coordinates, all others hold the fill. `--apply` writes atomically as `edit` does,
+  and `--base` refuses a map that changed since the dry run. Each axis is at most 1000.
 
 ## Map diff
 
@@ -368,7 +392,7 @@ Or in a project's `.mcp.json`:
 
 - Tools: `map_summary`, `map_cell`, `map_find`, `map_render` (PNG image, at most 64x64 tiles),
   `map_lint`, `type_info`, `map_diff` (optionally rendered), `map_edit`, `prefab_extract`,
-  `prefab_place`, `map_generators`, `map_check`, `project_compile`, `icon_info`, `icon_render`,
+  `map_resize`, `prefab_place`, `map_generators`, `map_check`, `project_compile`, `icon_info`, `icon_render`,
   `icon_diff`, `image_compare`, `ingame_render` and `dump_render`. Inputs are validated against each tool's schema; unknown
   arguments are refused. Failures come back as tool errors the model can read.
 - Every PNG tool takes `scale` (1-8, nearest neighbour), `background` (`#rrggbb[aa]` or

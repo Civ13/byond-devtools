@@ -9,6 +9,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { readProjectBytes } from './project.js';
 import { planEdit, EditError } from './edit.js';
+import { planResize } from './resize.js';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
@@ -32,6 +33,12 @@ export async function editMapFile({ root, map, patch, apply = false, maxEdits, p
     if (apply && report.postcondition && report.postcondition.failed) throw new EditError(`Postcondition failed (${report.postcondition.failed} rule(s)); nothing was written`, { postcondition: report.postcondition });
   }
   if (!apply) return report;
+  await replaceAtomically(input, out, newSha256);
+  return { ...report, applied: true };
+}
+
+/** Write out over the map read as input: temp file, read-back, re-hash of the original, rename. */
+async function replaceAtomically(input, out, newSha256) {
   const file = path.join(input.projectRoot, input.relative);
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.devtools-${randomBytes(6).toString('hex')}.tmp`);
   try {
@@ -42,5 +49,23 @@ export async function editMapFile({ root, map, patch, apply = false, maxEdits, p
     await rename(tmp, file);
   } catch (error) { await rm(tmp, { force: true }); throw error; }
   if (sha256(await readFile(file)) !== newSha256) throw new EditError('Map did not read back as written after the swap');
+}
+
+/**
+ * Resize a map file (see resize.js). spec: {base?, maxX, maxY, maxZ, fill, offsetX?, offsetY?}.
+ * With base, the file must still hash to it. Dry run unless apply; the write is atomic like edits.
+ */
+export async function resizeMapFile({ root, map, spec, apply = false }) {
+  const input = await readProjectBytes(root, map);
+  if (spec?.base !== undefined && spec.base !== input.sha256) throw new EditError(`Map changed since the resize was planned: base ${spec.base}, file ${input.sha256}`, { actualSha256: input.sha256 });
+  const bom = input.data.subarray(0, 3).equals(BOM);
+  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bom ? input.data.subarray(3) : input.data);
+  const plan = planResize(text, spec);
+  const out = Buffer.concat([bom ? BOM : Buffer.alloc(0), Buffer.from(plan.text, 'utf8')]);
+  const newSha256 = sha256(out);
+  const { text: _text, ...rest } = plan;
+  const report = { applied: false, map: input.relative.split(path.sep).join('/'), baseSha256: input.sha256, newSha256, ...rest };
+  if (!apply) return report;
+  await replaceAtomically(input, out, newSha256);
   return { ...report, applied: true };
 }

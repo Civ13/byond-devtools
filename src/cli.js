@@ -6,7 +6,7 @@ import { parseTypeTree, resolveVar, collectDefines, lintMap } from './typetree.j
 import { overrideAssignments } from './world.js';
 import { decodeDmi } from './dmi.js';
 import { loadRenderer, renderMap } from './render-project.js';
-import { editMapFile } from './edit-project.js';
+import { editMapFile, resizeMapFile } from './edit-project.js';
 import { loadDiff, renderDiff } from './diff-project.js';
 import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
@@ -18,7 +18,7 @@ import { renderIngame } from './ingame-render.js';
 import { encodePng, encodeApng } from './png.js';
 import { diffIcons } from './icon-diff.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check|compile|playtest|icon-diff> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|resize|diff|prefab-extract|prefab-place|generators|check|compile|playtest|icon-diff> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -38,6 +38,9 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           initialized world: runtime icons, overlays, colour matrices, planes and lighting
   edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json] [--contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]]
           dry run by default; --apply replaces the map atomically after checking base sha256 and expected stacks
+  resize: --map FILE [--max-x N] [--max-y N] [--max-z N] [--offset-x N] [--offset-y N] [--fill "/turf/x,/area/y"] [--base SHA256] [--apply]
+          new size (unset axes keep theirs); the offset moves existing tiles; new space and holes get the fill stack;
+          dry run by default; --apply rewrites the grid atomically, keeping the dictionary
   diff: --map FILE (--before FILE | --git-ref REF | --patch FILE.json) [--limit N]
           [--out FILE.png --dme FILE (--byond BIN | --tree FILE) [--z N] [--x1 N --y1 N --x2 N --y2 N] [--pad N] [--force]]
           changed cells by atom stack (removed/added atoms); --out draws before | after | highlighted changes
@@ -57,9 +60,9 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   playtest: --dme FILE --byond BIN [--map FILE] [--port N] [--minutes N] [--profile-procs] [--follow]
           RUNS THE GAME for you to join with Dream Seeker: temp folder, -safe, 127.0.0.1 only, no saves.
           Stops after --minutes (default 30) or Ctrl+C; reports runtime errors with source lines and the proc profile
-Apart from ingame and playtest, nothing runs DM code or touches a server. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
+Apart from ingame and playtest, nothing runs DM code or touches a server. Only render/diff/prefab/generators --out, edit --apply, resize --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold','interval-ms']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold','interval-ms','max-x','max-y','max-z','offset-x','offset-y','fill','base']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -86,7 +89,7 @@ async function contractChecker(opts, dme) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check','compile','playtest','icon-diff'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check','compile','playtest','icon-diff','resize'].includes(command)) throw new Error('Unknown command');
   const opts=options(args);
   if(command==='icon-diff') {
     if(!opts.before || !opts.after) throw new Error('--before and --after are required (a .dmi path or none)');
@@ -166,6 +169,16 @@ try {
     if(report.postcondition?.failed) process.exitCode=3;
     if(opts['inverse-out']) await writeFile(opts['inverse-out'],JSON.stringify(report.inverse,null,1)+'\n',{flag:'wx'});
     result={schemaVersion:1,provenance:{map:report.map,baseSha256:report.baseSha256,truthLayer:'authored-source'},data:{...report,inverse:opts['inverse-out']?{file:opts['inverse-out']}:report.inverse}};
+  }
+  else if(command==='resize') {
+    if(!opts.map) throw new Error('--map is required');
+    const spec={};
+    for(const [flag,k] of [['max-x','maxX'],['max-y','maxY'],['max-z','maxZ']]) if(opts[flag]!==undefined) spec[k]=integer(opts[flag],flag,1);
+    for(const [flag,k] of [['offset-x','offsetX'],['offset-y','offsetY']]) if(opts[flag]!==undefined) { if(!/^-?\d+$/.test(opts[flag])) throw new Error(`Invalid --${flag}`); spec[k]=Number(opts[flag]); }
+    if(opts.fill!==undefined) spec.fill=parseDmm(`"a" = (${opts.fill})\n(1,1,1) = {"\na\n"}\n`).definitions[0].atoms.map(a=>a.raw.trim());
+    if(opts.base!==undefined) spec.base=opts.base;
+    const report=await resizeMapFile({root:opts.root,map:opts.map,spec,apply:!!opts.apply});
+    result={schemaVersion:1,provenance:{map:report.map,baseSha256:report.baseSha256,truthLayer:'authored-source'},data:report};
   }
   else if(command==='diff') {
     if(!opts.map) throw new Error('--map is required');

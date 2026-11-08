@@ -286,6 +286,49 @@ ${rows ? `<table>${rows}</table>` : ''}</body></html>`;
   return { summary: s, states: d.states, before: d.before, panel: true };
 }
 
+/**
+ * Resize a map (src/resize.js): asks for the size, an offset and the fill stack, shows the dry run,
+ * then rewrites the file atomically with its sha256 as base. An open editor must have no unsaved
+ * edits; a clean one reloads by itself. spec (from the test hook) skips the questions.
+ */
+async function resizeCommand(uri, spec) {
+  uri = uri || vscode.window.activeTextEditor?.document.uri || [...sessions].find(s => s.panel.active)?.doc.uri;
+  if (!uri || !/\.dmm$/i.test(uri.fsPath)) { vscode.window.showWarningMessage('Pick a .dmm map first.'); return { error: 'not a .dmm' }; }
+  if ([...sessions].some(s => s.uri === uri.toString() && s.doc.model.isDirty())) {
+    vscode.window.showWarningMessage('Save or revert the map editor\'s unsaved edits before resizing.'); return { error: 'unsaved edits' };
+  }
+  const folder = vscode.workspace.getWorkspaceFolder(uri), root = folder ? folder.uri.fsPath : path.dirname(uri.fsPath);
+  const { coreDir } = await sessionLib(), core = coreDir(path.join(__dirname, 'lib'));
+  const { resizeMapFile } = await import(pathToFileURL(path.join(core, 'edit-project.js')).href);
+  const { parseDmm } = await import(pathToFileURL(path.join(core, 'dmm.js')).href);
+  const map = path.relative(root, uri.fsPath), file = await readMap(uri), parsed = parseDmm(file.text), w = parsed.world;
+  if (!spec) {
+    const size = await vscode.window.showInputBox({ prompt: 'New size as width x height x levels', value: `${w.maxX}x${w.maxY}x${w.maxZ}`, ignoreFocusOut: true,
+      validateInput: v => /^\s*\d+\s*x\s*\d+\s*x\s*\d+\s*$/i.test(v) ? null : 'Like 100x100x1' });
+    if (!size) return { cancelled: true };
+    const offset = await vscode.window.showInputBox({ prompt: 'Move the existing tiles by x,y (positive grows the map west/south)', value: '0,0', ignoreFocusOut: true,
+      validateInput: v => /^\s*-?\d+\s*,\s*-?\d+\s*$/.test(v) ? null : 'Like 0,0 or 10,-5' });
+    if (!offset) return { cancelled: true };
+    const corner = parsed.inspectCell(1, 1, 1)?.atoms.map(a => a.raw.trim()).filter(a => /^\/(turf|area)\b/.test(a)) ?? [];
+    const fill = await vscode.window.showInputBox({ prompt: 'Stack for new tiles: one turf and one area', value: corner.join(','), ignoreFocusOut: true });
+    if (fill === undefined) return { cancelled: true };
+    const [maxX, maxY, maxZ] = size.split(/x/i).map(Number), [offsetX, offsetY] = offset.split(',').map(Number);
+    spec = { maxX, maxY, maxZ, offsetX, offsetY, fill: fill.trim() ? parseDmm(`"a" = (${fill})\n(1,1,1) = {"\na\n"}\n`).definitions[0].atoms.map(a => a.raw.trim()) : undefined };
+  }
+  let plan;
+  try { plan = await resizeMapFile({ root, map, spec: { ...spec, confirm: undefined, base: file.sha } }); }
+  catch (e) { vscode.window.showWarningMessage(`Resize refused: ${e.message}`); return { error: e.message }; }
+  const text = `Resize ${path.basename(map)} from ${w.maxX}x${w.maxY}x${w.maxZ} to ${plan.after.maxX}x${plan.after.maxY}x${plan.after.maxZ}: ${plan.keptCells} tiles kept, ${plan.filledCells} filled, ${plan.croppedCells} cropped.`;
+  const ok = spec.confirm ?? (await vscode.window.showWarningMessage(text, { modal: true }, 'Resize')) === 'Resize';
+  if (!ok) return { cancelled: true, plan };
+  let done;
+  try { done = await resizeMapFile({ root, map, spec: { ...spec, confirm: undefined, base: file.sha }, apply: true }); }
+  catch (e) { vscode.window.showWarningMessage(`Resize failed, nothing was written: ${e.message}`); return { error: e.message }; }
+  for (const s of sessions) if (s.uri === uri.toString()) { s.doc.model.reset((await readMap(uri)).text); s.doc.savedSha = done.newSha256; s.provider.refresh(s.doc, text.replace(/^Resize/, 'Resized')); }
+  vscode.window.showInformationMessage(text.replace(/^Resize/, 'Resized'));
+  return { applied: true, report: done };
+}
+
 function activate(context) {
   diagnostics = vscode.languages.createDiagnosticCollection('byond');
   output = vscode.window.createOutputChannel('BYOND Playtest');
@@ -293,6 +336,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.compile', compileCommand));
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.playtest', playtestCommand));
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.compareIcon', uri => compareIconCommand(uri)));
+  context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.resizeMap', uri => resizeCommand(uri)));
   context.subscriptions.push(vscode.window.registerCustomEditorProvider(VIEW_TYPE, new MapEditorProvider(context), { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
   context.subscriptions.push(vscode.commands.registerCommand('byondDevtools.openPreview', async uri => {
     uri = uri || vscode.window.activeTextEditor?.document.uri;
@@ -303,6 +347,7 @@ function activate(context) {
   return {
     viewType: VIEW_TYPE,
     compareIcon: (uri, ref) => compareIconCommand(uri, ref),
+    resize: (uri, spec) => resizeCommand(uri, spec),
     diagnostics: () => { const out = []; diagnostics.forEach((uri, list) => out.push({ uri: uri.toString(), list: list.map(d => ({ line: d.range.start.line + 1, message: d.message, severity: d.severity })) })); return out; },
     sessions: () => [...sessions].map(s => ({ uri: s.uri, summary: s.doc.session.summary(), displayed: s.displayed, status: { ...s.status, panelVisible: s.panel.visible, panelActive: s.panel.active }, inspect: (x, y, z) => s.doc.session.inspect(x, y, z), render: v => s.doc.session.render(v),
       edit: m => s.provider.edit(s.doc, m), text: () => s.doc.model.text, dirty: () => s.doc.model.isDirty(),
