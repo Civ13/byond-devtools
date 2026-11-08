@@ -87,8 +87,14 @@ export async function renderDiff(renderer, { root, loaded, region, pad, maxSide 
   const r = region ?? diffRegion(loaded.diff, { pad, maxSide });
   if (!r) return null;
   const opts = { x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2, z: r.z };
-  const b = await renderMap(renderer, { root, mapText: loaded.beforeText, ...opts });
-  const a = await renderMap(renderer, { root, mapText: loaded.afterText, ...opts });
+  // A level only one side has (added or removed z-levels) draws as an empty panel on the other.
+  const side = async (text, map) => {
+    if (r.z <= map.world.maxZ) return renderMap(renderer, { root, mapText: text, ...opts });
+    const width = (r.x2 - r.x1 + 1) * renderer.iconSize, height = (r.y2 - r.y1 + 1) * renderer.iconSize;
+    return { result: { width, height, rgba: new Uint8Array(width * height * 4), drawn: 0, diagnostics: [{ code: 'level-missing', message: `This side has no level ${r.z}` }] } };
+  };
+  const b = await side(loaded.beforeText, loaded.beforeMap);
+  const a = await side(loaded.afterText, loaded.afterMap);
   const img = composeDiff(b.result, a.result, regionChanges(loaded.beforeMap, loaded.afterMap, r), r, renderer.iconSize);
   const png = encodePng(img, { text: { Comment: 'byond-devtools map diff: before | after | changed tiles; static render of authored source, not a client screenshot' } });
   return { png, region: { ...r }, width: img.width, height: img.height, outlined: img.outlined,
