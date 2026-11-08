@@ -52,6 +52,15 @@ async function run() {
     assert.equal(sha(mapFile), before);
     assert.equal(vscode.workspace.textDocuments.filter(d => d.isDirty).length, 0);
   });
+  await test('compile explains missing setup and leaves the Problems panel empty', async () => {
+    await config.update('byondBin', '', vscode.ConfigurationTarget.Global);
+    const r = await vscode.commands.executeCommand('byondDevtools.compile');
+    assert.match(r.error, /byondDevtools\.byondBin/);
+    assert.deepEqual(api.diagnostics(), []);
+    const p = await vscode.commands.executeCommand('byondDevtools.playtest', { confirmed: true, minutes: 1 });
+    assert.match(p.error, /byondDevtools\.byondBin/);
+  });
+  await config.update('byondBin', undefined, vscode.ConfigurationTarget.Global);
   await config.update('typeTree', undefined, vscode.ConfigurationTarget.Global);
   await config.update('dme', undefined, vscode.ConfigurationTarget.Global);
   console.log(results.join('\n'));

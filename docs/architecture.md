@@ -58,7 +58,9 @@ world size, which can exceed the highest placed row.
    cell comparison independent of dictionary keys, and unaffected-region equality in `edit`.
 5. Native map-load agreement: stub-typed maps compiled and booted in DreamDaemon
    516.1688, compared cell by cell (implemented, `scripts/native.js`).
-6. Full-game compilation and authorized isolated initialization/playtest (not run).
+6. Full-game compilation and authorized isolated playtest (`src/devrun.js`, pure parsers;
+   `src/devrun-project.js`, I/O): recorded compiler and runtime-error formats, a live fixture
+   compile and playtest when BYOND_BIN is set, and a Civ13 compile and boot.
 7. Static preview (`src/render.js`, pure; `src/render-project.js`, I/O): a golden fixture
    render with hand-checked pixels, fixture type defaults checked against DreamDaemon
    instances, and CI renders of Civ13 crops that fail on any missing icon or state. Not

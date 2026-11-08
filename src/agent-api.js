@@ -19,6 +19,7 @@ import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { findGenerators, GENERATOR_PROFILES } from './generators.js';
 import { checkContract, validateContract, needsTypes, densityResolver } from './contracts.js';
+import { compileProject } from './devrun-project.js';
 
 export class ToolInputError extends Error { constructor(message) { super(message); this.name = 'ToolInputError'; } }
 
@@ -40,6 +41,7 @@ export const TOOLS = Object.freeze([
   { name: 'prefab_extract', description: 'Lift a region as a prefab (JSON tile stacks). Returns the prefab; nothing is written.', inputSchema: obj({ ...mapArg, ...region, layers: { type: 'array', items: { enum: ['movable', 'turf', 'area'] } } }, ['map', 'x1', 'y1', 'x2', 'y2', 'z']), annotations: { readOnlyHint: true } },
   { name: 'prefab_place', description: 'Turn a prefab into an edit patch at x, y, z (replace or overlay). Preview with map_diff, apply with map_edit.', inputSchema: obj({ ...mapArg, prefab: { type: 'object' }, x: int, y: int, z: int, mode: { enum: ['replace', 'overlay'] } }, ['map', 'prefab', 'x', 'y', 'z']), annotations: { readOnlyHint: true } },
   { name: 'map_generators', description: 'Spawners, loot drops and landmarks in a map and the types their vars name.', inputSchema: obj({ ...mapArg, z: int, profile: { enum: Object.keys(GENERATOR_PROFILES) }, roots: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 0, maximum: 10000 } }, ['map']), annotations: { readOnlyHint: true } },
+  { name: 'project_compile', description: 'Full DreamMaker build of the project (optionally with another map selected) in a temp folder; returns errors and warnings with project-relative file:line. Runs no game code.', inputSchema: obj({ map: { type: 'string', description: 'Optional map to select instead of the .dme\'s own' } }), annotations: { readOnlyHint: true } },
   { name: 'map_check', description: 'Run a spatial contract (require/forbid/area/reachable/unreachable/enclosed rules with actor assumptions).', inputSchema: obj({ ...mapArg, contract: { type: 'object' } }, ['map', 'contract']), annotations: { readOnlyHint: true } },
 ]);
 
@@ -118,6 +120,11 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false }) {
     async map_generators({ map, z, profile = 'default', roots, limit = 1000 }) {
       const r = await renderer(), { input, parsed } = await readMap(map);
       return { provenance: provenance(map, input, { truthLayer: 'authored-source+native-type-tree', profile }), data: findGenerators(parsed, r.tree, r.project.sourceLine, { roots: roots ?? GENERATOR_PROFILES[profile].roots, z, limit, defines: r.defines }) };
+    },
+    async project_compile({ map }) {
+      if (!dme || !byond) throw new ToolInputError('project_compile needs the server started with --dme and --byond');
+      const r = await compileProject({ root, dme, map, binDir: byond });
+      return { provenance: { dme, dmeSha256: r.dmeSha256, map: r.map, truthLayer: 'native-compiler' }, data: { ...r, diagnostics: r.diagnostics.slice(0, 500), diagnosticsTruncated: r.diagnostics.length > 500 } };
     },
     async map_check({ map, contract }) { const check = await contractCheck(contract), { input } = await readMap(map); return { provenance: provenance(map, input), data: check(input.text.replace(/^﻿/, '')) }; },
   };

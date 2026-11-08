@@ -164,6 +164,14 @@ jobs:
           node -e "import('./src/ingame.js').then(async m=>{const s=await m.probeSource({root:'civ13',dme:'civ13.dme',profile:'civ13'});require('fs').mkdirSync('probe-check');require('fs').writeFileSync('probe-check/probe.dme',s.text)})"
           (cd probe-check && LD_LIBRARY_PATH="$BYOND_BIN" "$BYOND_BIN/DreamMaker" -max_errors 0 probe.dme | tail -3 | tee ../civ13-probe-compile.txt)
           grep -q " 0 errors" civ13-probe-compile.txt
+      - name: Civ13 compiles through compile, and with the playtest probe (not run)
+        shell: bash
+        run: |
+          node src/cli.js compile --root civ13 --dme civ13.dme --byond "$BYOND_BIN" > civ13-compile.json
+          node -e "const r=require('./civ13-compile.json').data;console.log(r.status,r.errors+' errors',r.warnings+' warnings',r.seconds+' s')"
+          node -e "import('./src/ingame.js').then(async m=>{const s=await m.probeSource({root:'civ13',dme:'civ13.dme',probe:'playtest'});require('fs').mkdirSync('playtest-check');require('fs').writeFileSync('playtest-check/probe.dme',s.text)})"
+          (cd playtest-check && LD_LIBRARY_PATH="$BYOND_BIN" "$BYOND_BIN/DreamMaker" -max_errors 0 probe.dme | tail -3 | tee ../civ13-playtest-compile.txt)
+          grep -q " 0 errors" civ13-playtest-compile.txt
       - name: Render Civ13 crops (every icon must be found)
         shell: bash
         run: |
@@ -216,7 +224,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/byond/bin" >> "$GITHUB_ENV"
           LD_LIBRARY_PATH="$RUNNER_TEMP/byond/bin" "$RUNNER_TEMP/byond/bin/DreamMaker" 2>&1 | head -n 1 | grep -F "$BYOND_VERSION"
       - name: Live fixture agreement (map load, type tree, instance values)
-        run: node --test test/native.test.js test/typetree.test.js test/dmi.test.js test/edit.test.js test/ingame.test.js
+        run: node --test test/native.test.js test/typetree.test.js test/dmi.test.js test/edit.test.js test/ingame.test.js test/devrun.test.js
       - name: Re-record the type tree, icon pixel and render fixtures and diff
         run: |
           node scripts/record-types-fixture.js --byond "$BYOND_BIN"

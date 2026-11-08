@@ -1,0 +1,3 @@
+// Compile fixture: one error and one warning.
+#include "code/world.dm"
+#include "code/broken.dm"

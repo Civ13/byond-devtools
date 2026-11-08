@@ -12,11 +12,12 @@ import { diffRegion } from './diff.js';
 import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { findGenerators, markTiles, GENERATOR_PROFILES } from './generators.js';
 import { checkContract, validateContract, needsTypes, densityResolver } from './contracts.js';
+import { compileProject, playtest } from './devrun-project.js';
 import { recordIngame, PROFILES } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place|generators|check|compile|playtest> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -44,13 +45,17 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   check: --map FILE --contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]
           spatial contract: require/forbid/area counts, reachable/unreachable routes, enclosed rooms; exit 3 on failure
           (edit --contract refuses --apply when the edited map would fail it)
-No DM execution or server access. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
+  compile: --dme FILE --byond BIN [--map FILE]   full DreamMaker build in a temp folder; structured errors/warnings, exit 3 on errors
+  playtest: --dme FILE --byond BIN [--map FILE] [--port N] [--minutes N] [--profile-procs] [--follow]
+          RUNS THE GAME for you to join with Dream Seeker: temp folder, -safe, 127.0.0.1 only, no saves.
+          Stops after --minutes (default 30) or Ctrl+C; reports runtime errors with source lines and the proc profile
+Apart from ingame and playtest, nothing runs DM code or touches a server. Only render/diff/prefab/generators --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
-    if(['subtypes','areas','show-invisible','force','apply'].includes(key)) opts[key]=true;
+    if(['subtypes','areas','show-invisible','force','apply','profile-procs','follow'].includes(key)) opts[key]=true;
     else { if(i+1>=args.length || args[i+1].startsWith('--')) throw new Error(`Missing value for ${flag}`); opts[key]=args[++i]; }
   }
   return opts;
@@ -73,7 +78,7 @@ async function contractChecker(opts, dme) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place','generators','check','compile','playtest'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -201,6 +206,25 @@ try {
     result={schemaVersion:1,provenance:{map:opts.map,sha256:input.sha256,contract:opts.contract,truthLayer:'authored-source'},data:{...report,
       limitations:['Movement is a static walk over authored tiles: Bump(), CanPass(), door locks, runtime spawns and z transitions are not modelled.']}};
     if(report.failed) process.exitCode=3;
+  }
+  else if(command==='compile') {
+    if(!dme) throw new Error('--dme is required'); if(!opts.byond) throw new Error('--byond is required');
+    const r=await compileProject({root:opts.root,dme:opts.dme,map:opts.map,binDir:opts.byond});
+    result={schemaVersion:1,provenance:{dme:opts.dme,dmeSha256:r.dmeSha256,map:r.map,truthLayer:'native-compiler'},data:r};
+    if(r.status!=='ok') process.exitCode=3;
+  }
+  else if(command==='playtest') {
+    if(!dme) throw new Error('--dme is required'); if(!opts.byond) throw new Error('--byond is required');
+    const minutes=opts.minutes!==undefined?Number(opts.minutes):30; if(!(minutes>0 && minutes<=1440)) throw new Error('Invalid --minutes');
+    const port=opts.port!==undefined?integer(opts.port,'port'):undefined; if(port!==undefined && (port<1024||port>65535)) throw new Error('--port must be 1024-65535');
+    const ac=new AbortController(); const stop=()=>ac.abort(); process.once('SIGINT',stop); process.once('SIGTERM',stop);
+    console.error(JSON.stringify({phase:'compile'}));
+    const r=await playtest({root:opts.root,dme:opts.dme,map:opts.map,binDir:opts.byond,port,minutes,profileProcs:!!opts['profile-procs'],signal:ac.signal,
+      onReady:({url})=>console.error(JSON.stringify({phase:'ready',url,join:`Open ${url} in Dream Seeker (or run: DreamSeeker ${url}); Ctrl+C stops the world`})),
+      onLog:opts.follow?chunk=>process.stderr.write(chunk):undefined});
+    process.off('SIGINT',stop); process.off('SIGTERM',stop);
+    result={schemaVersion:1,provenance:{dme:opts.dme,dmeSha256:r.compile.dmeSha256,map:opts.map??null,truthLayer:'native-playtest'},data:r};
+    if(r.status==='compile-failed'||r.status==='boot-failed') process.exitCode=3;
   }
   else if(command==='icon') {
     if(!opts.dmi) throw new Error('--dmi is required');

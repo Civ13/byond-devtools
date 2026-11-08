@@ -1,7 +1,7 @@
 {
   "name": "byond-devtools-vscode",
   "displayName": "BYOND Map Preview",
-  "description": "Read-only preview of BYOND .dmm maps: rendered tiles from the native type tree, cell inspection and diagnostics.",
+  "description": "Read-only preview of BYOND .dmm maps (rendered tiles from the native type tree, cell inspection, diagnostics), plus DreamMaker compile errors in the Problems panel and local playtests.",
   "version": "0.1.0",
   "publisher": "civ13",
   "license": "AGPL-3.0-only",
@@ -53,6 +53,16 @@
         "command": "byondDevtools.openPreview",
         "title": "Open BYOND Map Preview",
         "category": "BYOND"
+      },
+      {
+        "command": "byondDevtools.compile",
+        "title": "Compile project",
+        "category": "BYOND"
+      },
+      {
+        "command": "byondDevtools.playtest",
+        "title": "Start local playtest",
+        "category": "BYOND"
       }
     ],
     "menus": {
@@ -87,6 +97,13 @@
           "type": "string",
           "default": "",
           "description": "The project .dme, relative to the workspace folder. Default: the only .dme at the folder root."
+        },
+        "byondDevtools.playtestMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 1440,
+          "description": "How long a local playtest runs before the world shuts itself down."
         }
       }
     }
