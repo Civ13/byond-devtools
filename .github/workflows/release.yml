@@ -14,6 +14,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Marketplace tokens are optional: each publish step runs only when its secret is set.
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -37,3 +41,11 @@ jobs:
         run: |
           sed "s/VERSION/$VERSION/g" .github/release-notes.md > notes.md
           gh release create "$GITHUB_REF_NAME" "vscode/byond-map-preview-$VERSION.vsix" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+      - name: Publish to the Visual Studio Marketplace
+        if: env.VSCE_PAT != ''
+        working-directory: vscode
+        run: npx vsce publish --no-dependencies --packagePath "byond-map-preview-$VERSION.vsix"
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        working-directory: vscode
+        run: npx --yes ovsx@1.2.0 publish "byond-map-preview-$VERSION.vsix" -p "$OVSX_PAT"
