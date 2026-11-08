@@ -7,11 +7,13 @@ import { overrideAssignments } from './world.js';
 import { decodeDmi } from './dmi.js';
 import { loadRenderer, renderMap } from './render-project.js';
 import { editMapFile } from './edit-project.js';
+import { loadDiff, renderDiff } from './diff-project.js';
+import { diffRegion } from './diff.js';
 import { recordIngame, PROFILES } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -27,9 +29,12 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           initialized world: runtime icons, overlays, colour matrices, planes and lighting
   edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json]
           dry run by default; --apply replaces the map atomically after checking base sha256 and expected stacks
-No DM execution or server access. Only render --out, edit --apply and edit --inverse-out write files.`;
+  diff: --map FILE (--before FILE | --git-ref REF | --patch FILE.json) [--limit N]
+          [--out FILE.png --dme FILE (--byond BIN | --tree FILE) [--z N] [--x1 N --y1 N --x2 N --y2 N] [--pad N] [--force]]
+          changed cells by atom stack (removed/added atoms); --out draws before | after | highlighted changes
+No DM execution or server access. Only render/diff --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -46,7 +51,7 @@ function integer(value, name, fallback) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -95,6 +100,30 @@ try {
     const report=await editMapFile({root:opts.root,map:opts.map,patch,apply:!!opts.apply});
     if(opts['inverse-out']) await writeFile(opts['inverse-out'],JSON.stringify(report.inverse,null,1)+'\n',{flag:'wx'});
     result={schemaVersion:1,provenance:{map:report.map,baseSha256:report.baseSha256,truthLayer:'authored-source'},data:{...report,inverse:opts['inverse-out']?{file:opts['inverse-out']}:report.inverse}};
+  }
+  else if(command==='diff') {
+    if(!opts.map) throw new Error('--map is required');
+    let patch;
+    if(opts.patch) { const bytes=await readFile(opts.patch); if(bytes.byteLength>16*1024*1024) throw new Error('Patch byte limit exceeded'); patch=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)); }
+    if(opts.out) {
+      if(!/\.png$/i.test(opts.out)) throw new Error('--out must name a .png file');
+      if(!dme) throw new Error('--dme is required with --out');
+      let exists=false; try { exists=!!(await lstat(opts.out)); } catch {}
+      if(exists && !opts.force) throw new Error(`${opts.out} exists; pass --force to overwrite`);
+    }
+    const loaded=await loadDiff({root:opts.root,map:opts.map,before:opts.before,gitRef:opts['git-ref'],patch,limit:integer(opts.limit,'limit',10000)});
+    let image=null;
+    if(opts.out) {
+      let region;
+      if(['x1','y1','x2','y2'].some(k=>opts[k]!==undefined)) { region={z:integer(opts.z,'z',1)}; for(const k of ['x1','y1','x2','y2']) region[k]=integer(opts[k],k); }
+      const renderer=await loadRenderer({root:opts.root,dme:opts.dme,binDir:opts.byond,treeFile:opts.tree});
+      const pad=integer(opts.pad,'pad',2);
+      region??=diffRegion(loaded.diff,{z:opts.z!==undefined?integer(opts.z,'z'):undefined,pad});
+      const r=region?await renderDiff(renderer,{root:opts.root,loaded,region}):null;
+      if(r) { await writeFile(opts.out,r.png,{flag:opts.force?'w':'wx'}); image={out:opts.out,width:r.width,height:r.height,region:r.region,outlined:r.outlined,panels:['before','after','highlight'],diagnostics:r.diagnostics}; }
+      else image={out:null,reason:'no changed cells on the requested level'};
+    }
+    result={schemaVersion:1,provenance:{before:loaded.before,after:loaded.after,truthLayer:'authored-source'},data:{...loaded.diff,image}};
   }
   else if(command==='icon') {
     if(!opts.dmi) throw new Error('--dmi is required');

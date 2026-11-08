@@ -54,7 +54,8 @@ world size, which can exceed the highest placed row.
 2. Source-preserving no-op observation and adversarial input tests (implemented).
 3. Native type tree and semantic lint (unknown types, undeclared override vars), alongside
    Civ13 maplint (implemented, `src/typetree.js`).
-4. Semantic/visual edit diff and unaffected-region equality (future).
+4. Semantic/visual edit diff (`src/diff.js`, pure; `src/diff-project.js`, I/O): stack-based
+   cell comparison independent of dictionary keys, and unaffected-region equality in `edit`.
 5. Native map-load agreement: stub-typed maps compiled and booted in DreamDaemon
    516.1688, compared cell by cell (implemented, `scripts/native.js`).
 6. Full-game compilation and authorized isolated initialization/playtest (not run).
