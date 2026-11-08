@@ -328,6 +328,7 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
   };
 
   return {
+    root,
     tools: TOOLS,
     async call(name, args = {}) {
       const tool = TOOLS.find(t => t.name === name);
