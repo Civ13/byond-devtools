@@ -9,7 +9,7 @@ const vscode = require('vscode');
 const repo = path.join(__dirname, '..', '..', '..');
 const project = path.join(repo, 'fixtures', 'render', 'project');
 const sha = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
-const wait = async (fn, ms = 20000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error('timed out'); await new Promise(r => setTimeout(r, 100)); } };
+const wait = async (fn, ms = 20000, what = String(fn)) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
 async function run() {
   const results = [];
@@ -60,7 +60,8 @@ async function run() {
     try {
       await vscode.commands.executeCommand('vscode.openWith', uri, api.viewType);
       const s = await wait(() => api.sessions().find(x => x.uri === uri.toString()));
-      await wait(() => s.displayed);
+      // sessions() returns snapshots, so look the panel up again to see it displayed.
+      await wait(() => api.sessions().find(x => x.uri === uri.toString() && x.displayed));
       await assert.rejects(s.edit({ op: 'place', cells: [{ x: 1, y: 1, z: 1 }], atom: '/obj/not_a_type' }), /Not a type in this project/);
       assert.equal(await s.edit({ op: 'place', cells: [{ x: 2, y: 2, z: 1 }, { x: 3, y: 2, z: 1 }], atom: '/obj/tree' }), true);
       assert.deepEqual(s.inspect(2, 2, 1).atoms.map(a => a.path), ['/obj/tinted', '/mob/man', '/obj/tree', '/turf/floor', '/area/zone']);
