@@ -9,11 +9,12 @@ import { loadRenderer, renderMap } from './render-project.js';
 import { editMapFile } from './edit-project.js';
 import { loadDiff, renderDiff } from './diff-project.js';
 import { diffRegion } from './diff.js';
+import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { recordIngame, PROFILES } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
-const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff> --root DIR --map FILE [--dme FILE]
+const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon|render|ingame|edit|diff|prefab-extract|prefab-place> --root DIR --map FILE [--dme FILE]
   cell: --x N --y N --z N
   find: --type /path [--subtypes] [--limit N] [--offset N]
   project: --dme FILE (no --map needed)
@@ -32,9 +33,12 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
   diff: --map FILE (--before FILE | --git-ref REF | --patch FILE.json) [--limit N]
           [--out FILE.png --dme FILE (--byond BIN | --tree FILE) [--z N] [--x1 N --y1 N --x2 N --y2 N] [--pad N] [--force]]
           changed cells by atom stack (removed/added atoms); --out draws before | after | highlighted changes
-No DM execution or server access. Only render/diff --out, edit --apply and edit --inverse-out write files.`;
+  prefab-extract: --map FILE --x1 N --y1 N --x2 N --y2 N --z N --out FILE.json [--layers movable,turf,area]
+  prefab-place: --map FILE --prefab FILE.json --x N --y N --z N [--mode replace|overlay] [--out PATCH.json]
+          makes an edit patch (base = the map's sha256); preview it with diff --patch, apply it with edit
+No DM execution or server access. Only render/diff/prefab --out, edit --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -51,7 +55,7 @@ function integer(value, name, fallback) {
 try {
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='--help') { console.log(usage); process.exit(0); }
-  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff'].includes(command)) throw new Error('Unknown command');
+  if(!['summary','cell','find','project','types','lint','icon','render','ingame','edit','diff','prefab-extract','prefab-place'].includes(command)) throw new Error('Unknown command');
   const opts=options(args); if(!opts.root) throw new Error('--root is required');
   const dme=opts.dme ? await readProjectFile(opts.root,opts.dme,16*1024*1024) : null;
   let result;
@@ -124,6 +128,25 @@ try {
       else image={out:null,reason:'no changed cells on the requested level'};
     }
     result={schemaVersion:1,provenance:{before:loaded.before,after:loaded.after,truthLayer:'authored-source'},data:{...loaded.diff,image}};
+  }
+  else if(command==='prefab-extract' || command==='prefab-place') {
+    if(!opts.map) throw new Error('--map is required');
+    if(opts.out) { if(!/\.json$/i.test(opts.out)) throw new Error('--out must name a .json file'); let exists=false; try { exists=!!(await lstat(opts.out)); } catch {} if(exists) throw new Error(`${opts.out} exists`); }
+    const input=await readProjectFile(opts.root,opts.map), map=parseDmm(input.text.replace(/^\uFEFF/,''));
+    const provenance={map:opts.map,sha256:input.sha256,truthLayer:'authored-source'};
+    let out;
+    if(command==='prefab-extract') {
+      if(!opts.out) throw new Error('--out is required');
+      const region={}; for(const k of ['x1','y1','x2','y2','z']) region[k]=integer(opts[k],k);
+      out=extractPrefab(map,{...region,layers:opts.layers?opts.layers.split(','):undefined,source:{map:opts.map,sha256:input.sha256}});
+      result={schemaVersion:1,provenance,data:{out:opts.out,width:out.width,height:out.height,cells:out.cells.length,holes:out.holes,types:out.types.length}};
+    } else {
+      if(!opts.prefab) throw new Error('--prefab is required');
+      const prefab=validatePrefab(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readFile(opts.prefab))));
+      out=placePrefab(map,prefab,{x:integer(opts.x,'x'),y:integer(opts.y,'y'),z:integer(opts.z,'z'),mode:opts.mode??'replace',base:input.sha256});
+      result={schemaVersion:1,provenance,data:opts.out?{out:opts.out,edits:out.edits.length,...out.prefab}:out};
+    }
+    if(opts.out) await writeFile(opts.out,JSON.stringify(out,null,1)+'\n',{flag:'wx'});
   }
   else if(command==='icon') {
     if(!opts.dmi) throw new Error('--dmi is required');

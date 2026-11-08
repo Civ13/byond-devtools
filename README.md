@@ -70,7 +70,7 @@ and type path are currently rejected. See [architecture](docs/architecture.md).
 3. Read-only VS Code custom editor, tested in Stable and Insiders on Linux and Windows (done, `vscode/`).
 4. One copy-on-write edit transaction with old-value preconditions, bounded edits,
    inverse patch and verified unchanged regions, plus a semantic and visual diff (done).
-5. Prefabs, generator-aware tools, spatial contracts and local agent API/MCP.
+5. Prefabs (done), generator-aware tools, spatial contracts and local agent API/MCP.
 6. Authorized native compiler/debugger/playtest integration, distinct from static
    validation. No live-server or persistence actions by default.
 
@@ -229,6 +229,30 @@ node src/cli.js diff --root /path/to/Civ13 --map maps/x.dmm --patch patch.json \
   blue reordered, green added, red removed).
 - `--git-ref` runs `git show REF:path` without a shell; revisions with `..` or a leading
   `-` are refused. A patch diff never writes the map.
+
+## Prefabs
+
+A prefab is a rectangle of tile stacks lifted from a map as JSON, with atom text kept as
+authored. Placing one never writes the map: it makes an ordinary `edit` patch whose `expect`
+stacks are the target's current tiles, so it gets the same base-hash and stale-stack checks,
+and can be previewed with `diff --patch` first.
+
+```sh
+node src/cli.js prefab-extract --root R --map maps/a.dmm --x1 8 --y1 260 --x2 19 --y2 270 --z 1 \
+  --layers movable,turf --out house.json
+node src/cli.js prefab-place --root R --map maps/b.dmm --prefab house.json --x 410 --y 170 --z 2 --out patch.json
+node src/cli.js diff --root R --map maps/b.dmm --patch patch.json --dme civ13.dme --byond BIN --out preview.png
+node src/cli.js edit --root R --map maps/b.dmm --patch patch.json --apply --inverse-out undo.json
+```
+
+- `--layers` picks what each tile keeps: `movable` (objs and mobs), `turf`, `area`.
+- `replace` (default) puts the prefab's stack on each tile, keeping the tile's own turf or
+  area where the prefab cell has none. `overlay` adds the prefab's movables on top of what is
+  there; a prefab turf or area still replaces the tile's.
+- Tiles whose result is unchanged are skipped, so placing a prefab twice is a no-op. Missing
+  prefab cells leave the tile alone. The prefab lists its `types`; run `lint` after applying
+  when it came from another project. Rotation is not offered: `dir` values would need
+  per-type knowledge to turn correctly.
 
 ## Native BYOND agreement
 
