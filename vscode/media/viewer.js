@@ -11,8 +11,10 @@
   const view = () => { const size = Number($('size').value), x = Number($('x').value) || 1, y = Number($('y').value) || 1, z = Number($('z').value) || 1; return { x1: x, y1: y, x2: x + size - 1, y2: y + size - 1, z, size }; };
   function render() {
     const v = view(); status('Rendering...');
-    vscode.setState({ x: v.x1, y: v.y1, z: v.z, size: v.size, tool, brush: $('brush').value });
-    send({ type: 'render', view: { x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, z: v.z } });
+    const kinds = ['turf', 'obj', 'mob', 'area'].filter(k => $(`k-${k}`).checked), focus = $('focus').value.trim(), animate = $('animate').checked;
+    vscode.setState({ x: v.x1, y: v.y1, z: v.z, size: v.size, tool, brush: $('brush').value, kinds, focus, animate });
+    if (animate) status('Rendering 8 frames...');
+    send({ type: 'render', view: { x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, z: v.z, kinds, focus, animate } });
   }
   // The PNG goes in as a blob: URL (no data: URL length limits), and the extension hears back
   // whether it actually displayed, so a blank view always comes with a reason.
@@ -160,6 +162,9 @@
       $('z').innerHTML = summary.levels.map(z => `<option>${z}</option>`).join('');
       if (state.z) { $('z').value = state.z; $('x').value = state.x; $('y').value = state.y; $('size').value = state.size; }
       if (state.brush) $('brush').value = state.brush;
+      if (state.kinds) for (const k of ['turf', 'obj', 'mob', 'area']) $(`k-${k}`).checked = state.kinds.includes(k);
+      if (state.focus) $('focus').value = state.focus;
+      if (state.animate) $('animate').checked = true;
       $('report').textContent = `world ${summary.world.maxX}x${summary.world.maxY}x${summary.world.maxZ}, ${summary.cellCount} cells, ${summary.dictionaryEntries} entries` +
         (summary.diagnostics.length ? `\n${summary.diagnostics.length} parser diagnostics` : '');
       render();
@@ -172,7 +177,7 @@
       if (m.error) { status(m.error); img.removeAttribute('src'); drawOverlay(); return; }
       iconSize = m.iconSize; show(m.png);
       status(m.drawn === 0 ? 'Nothing in this view could be drawn: no icon resolved (see Report).'
-        : `(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} - ${m.drawn} sprites, ${m.truthLayer}, not a client screenshot`);
+        : `(${m.region.x1},${m.region.y1})-(${m.region.x2},${m.region.y2}) z${m.region.z} - ${m.drawn} sprites, ${m.truthLayer}${m.animation ? `, animated (${m.animation.frames} frames)` : ''}${m.focus ? `, highlighting ${m.focus}` : ''}, not a client screenshot`);
       $('report').textContent = (m.diagnostics.length ? m.diagnostics.map(d => `${d.code} ${d.detail} x${d.count}`).join('\n') : 'Everything drawn exactly.');
     } else if (m.type === 'cell') {
       if (!selected || m.cell.x !== selected.x || m.cell.y !== selected.y || m.cell.z !== selected.z) return;
@@ -185,6 +190,8 @@
     } else if (m.type === 'error') status(m.message);
   });
   $('go').addEventListener('click', render);
+  for (const id of ['k-turf', 'k-obj', 'k-mob', 'k-area', 'animate']) $(id).addEventListener('change', render);
+  $('focus').addEventListener('change', render);
   $('undo').addEventListener('click', () => send({ type: 'undo' }));
   $('redo').addEventListener('click', () => send({ type: 'redo' }));
   setTool(state.tool || 'select');

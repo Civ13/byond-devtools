@@ -1,8 +1,9 @@
 byond-devtools is a dependency-free toolkit for BYOND maps.
 
 ## What's in it
+- MCP server (`node src/mcp.js`) for agents: map inspection, renders (filters, boxes, animated PNGs), icon renders, image comparison, diffs, prefabs, contracts and safe edits.
 - CLI (`node src/cli.js`, Node 22+): `summary`, `cell`, `find`, `types`, `lint`, `icon`, `render` (static PNG of a map region), `ingame` (boots the game headless in a temp copy and renders the map after runtime icon changes and lighting) and `edit` (safe copy-on-write map edits, dry run by default).
-- **BYOND Map Editor** for VS Code (`byond-map-preview-VERSION.vsix`, attached): a custom editor for `.dmm` files with a rendered view, cell inspector and report, plus place, erase, stamp and move tools, var editing, undo/redo and verified saves.
+- **BYOND Map Editor** for VS Code (`byond-map-preview-VERSION.vsix`, attached): a custom editor for `.dmm` files with a rendered view (kind toggles, type highlighting and animated states), cell inspector and report, plus place, erase, stamp and move tools, var editing, undo/redo and verified saves.
 
 ## Installing the VS Code editor
 1. Download `byond-map-preview-VERSION.vsix` below.

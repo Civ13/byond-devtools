@@ -167,6 +167,9 @@ function html(webview, media) {
 <label>x <input id="x" type="number" min="1" value="1"></label><label>y <input id="y" type="number" min="1" value="1"></label>
 <label>size <select id="size"><option>16</option><option selected>32</option><option>64</option></select></label>
 <button id="go">Render</button>
+<span class="layers" title="Atom kinds to draw">show <label><input type="checkbox" id="k-turf" checked>turfs</label><label><input type="checkbox" id="k-obj" checked>objs</label><label><input type="checkbox" id="k-mob" checked>mobs</label><label><input type="checkbox" id="k-area">areas</label></span>
+<input id="focus" list="types" placeholder="highlight type" title="Dim everything except this type and its subtypes" spellcheck="false">
+<label title="Play animated icon states (8 frames, 200 ms each)"><input type="checkbox" id="animate">animate</label>
 <span class="tools"><button data-tool="select" title="Click a tile to inspect and edit its stack">Select</button><button data-tool="place" title="Click or drag to place the brush type">Place</button><button data-tool="erase" title="Click or drag to remove the top object">Erase</button><button data-tool="stamp" title="Click or drag to copy a whole stack">Stamp</button></span>
 <button id="undo" class="secondary" title="Undo (Ctrl+Z)">Undo</button><button id="redo" class="secondary" title="Redo (Ctrl+Y)">Redo</button>
 <span id="brushbar"><input id="brush" list="types" placeholder="type path to place, e.g. /obj/structure/chair" spellcheck="false"></span><span id="stampinfo" hidden>Stamp: none</span>

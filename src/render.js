@@ -117,18 +117,20 @@ export function renderRegion(map, { x1, y1, x2, y2, z, iconSize = 32, appearance
 }
 
 /**
- * Atom filter for renderRegion. filter: {kinds, excludeKinds, types, excludeTypes, mode}.
+ * Atom filter for renderRegion. filter: {kinds, excludeKinds, types, excludeTypes, focus, mode}.
  * types match a path or any subtype. Returns (path, kind) -> 'show' | 'dim' | 'hide'.
  */
 export function atomFilter(filter) {
   if (!filter) return () => 'show';
   const under = (path, roots) => roots.some(r => path === r || path.startsWith(r.endsWith('/') ? r : r + '/'));
-  const { kinds, excludeKinds, types, excludeTypes, mode = 'hide' } = filter;
+  const { kinds, excludeKinds, types, excludeTypes, focus, mode = 'hide' } = filter;
   if (mode !== 'hide' && mode !== 'dim') throw new TypeError('filter mode must be hide or dim');
   return (path, kind) => {
     const ok = (!kinds?.length || kinds.includes(kind)) && !excludeKinds?.includes(kind)
       && (!types?.length || under(path, types)) && !(excludeTypes?.length && under(path, excludeTypes));
-    return ok ? 'show' : mode;
+    if (!ok) return mode;
+    // focus: atoms the other filters keep are dimmed unless they are (under) one of these types.
+    return focus?.length && !under(path, focus) ? 'dim' : 'show';
   };
 }
 

@@ -9,6 +9,10 @@ A custom editor for BYOND `.dmm` maps, built on
 - Pick a z level, the bottom-left tile and a view size (16, 32 or 64 tiles), then Render.
 - The image is the static preview (authored source plus compiled type defaults), not a
   client screenshot. The report lists everything not drawn exactly.
+- **show** turfs, objs, mobs and areas toggles which kinds are drawn. **highlight type** dims
+  everything except that type and its subtypes (e.g. `/obj/structure/door`). **animate** plays
+  animated icon states (8 frames, 200 ms each, every state stepping by its own delays); editing
+  works the same while it plays.
 
 Editing:
 
