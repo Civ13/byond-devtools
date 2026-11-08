@@ -60,14 +60,20 @@ class MapEditorProvider {
         dme: folder ? await findDme(folder) : null, treeFile: resolve(config.get('typeTree')), byondBin: config.get('byondBin') || undefined, core });
     } catch (e) { doc.error = e.message; return doc; }
     // Reload a clean document when the file changes on disk (git pull, mapmerge2); keep a dirty one and say so.
-    doc.watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(path.dirname(uri.fsPath)), path.basename(uri.fsPath)));
-    doc.watcher.onDidChange(async () => {
+    // Watch through the workspace folder (the recursive watcher): a watch on the file itself
+    // can stop on Linux once a save replaces the file by rename.
+    const pattern = folder ? new vscode.RelativePattern(folder, path.relative(root, uri.fsPath).split(path.sep).join('/'))
+      : new vscode.RelativePattern(vscode.Uri.file(path.dirname(uri.fsPath)), path.basename(uri.fsPath));
+    doc.watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    const onDisk = async () => {
       try {
-        const file = await readMap(uri); if (file.sha === doc.savedSha) return;
+        if (doc.saving) return; // our own save; it updates savedSha itself
+        const file = await readMap(uri); if (doc.saving || file.sha === doc.savedSha) return;
         if (doc.model.isDirty()) { doc.diskChanged = true; this.refresh(doc, 'The file changed on disk. Save will refuse; use "File: Revert File" to load it.'); return; }
         doc.model.reset(file.text); doc.savedSha = file.sha; this.refresh(doc, 'Reloaded: the file changed on disk.');
       } catch (e) { this.refresh(doc, `Could not reload: ${e.message}`); }
-    });
+    };
+    doc.watcher.onDidChange(onDisk); doc.watcher.onDidCreate(onDisk);
     return doc;
   }
   refresh(doc, message) { for (const p of doc.panels) p.webview.postMessage({ type: 'changed', summary: doc.session.summary(), message }); }
@@ -103,11 +109,13 @@ class MapEditorProvider {
     const patch = doc.model.savePatch();
     if (!patch.edits.length) return;
     const { editMapFile } = await import(pathToFileURL(path.join(doc.core, 'edit-project.js')).href);
+    doc.saving = true;
     try {
       await editMapFile({ root: doc.root, map: path.relative(doc.root, doc.uri.fsPath), patch: { base: doc.savedSha, ...patch }, apply: true, maxEdits: doc.model.map.cellCount });
+      const file = await readMap(doc.uri);
+      doc.model.reset(file.text); doc.savedSha = file.sha; doc.diskChanged = false;
     } catch (e) { throw new Error(`BYOND map not saved: ${e.message}`); }
-    const file = await readMap(doc.uri);
-    doc.model.reset(file.text); doc.savedSha = file.sha; doc.diskChanged = false;
+    finally { doc.saving = false; }
     this.refresh(doc, `Saved ${patch.edits.length} tile(s) through safe edit.`);
   }
   async saveCustomDocumentAs() {
