@@ -13,7 +13,7 @@ import { extractPrefab, placePrefab, validatePrefab } from './prefab.js';
 import { findGenerators, markTiles, GENERATOR_PROFILES } from './generators.js';
 import { checkContract, validateContract, needsTypes, densityResolver } from './contracts.js';
 import { compileProject, playtest } from './devrun-project.js';
-import { recordIngame, PROFILES } from './ingame.js';
+import { recordIngame, PROFILES, validateDump, loadDumpIcons } from './ingame.js';
 import { renderIngame } from './ingame-render.js';
 import { encodePng } from './png.js';
 import { writeFile, lstat, readFile } from 'node:fs/promises';
@@ -29,6 +29,8 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           static preview from authored source + type defaults (not a client screenshot); at most 128x128 tiles
   ingame: --dme FILE --byond BIN --out FILE.png --x1 N --y1 N --x2 N --y2 N --z N [--profile default|civ13]
           [--map FILE] [--time-of-day NAME] [--save-dump FILE.json] [--force]   or: --dump FILE.json --out FILE.png
+          (a dump's icons are inline base64 or project-relative source paths read from --root, so a
+          live game's dump, such as Civ13's character_view, renders the same way)
           boots the game headless in a temp folder (RUNS GAME CODE: -safe, 127.0.0.1, no saves) and renders the
           initialized world: runtime icons, overlays, colour matrices, planes and lighting
   edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json] [--contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]]
@@ -112,8 +114,8 @@ try {
       dump=run.dump;
       if(opts['save-dump']) await writeFile(opts['save-dump'],JSON.stringify(dump)+'\n',{flag:'wx'});
     }
-    const icons=dump.icons.map(i=>{ try { return i.base64?decodeDmi(Buffer.from(i.base64,'base64'),{plainPng:true}):null; } catch { return null; } });
-    const r=renderIngame(dump,icons);
+    validateDump(dump,{maxTiles:128*128});
+    const r=renderIngame(dump,await loadDumpIcons(dump,opts.root));
     await writeFile(opts.out,encodePng(r,{text:{Comment:`byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`}}),{flag:opts.force?'w':'wx'});
     result={schemaVersion:1,provenance:{...dump.provenance,byond:dump.byond,region:dump.region,timeOfDay:dump.time_of_day,seconds:run?.seconds??null,runtimeErrors:run?.runtimeErrors??null},
       data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,diagnostics:r.diagnostics,

@@ -12,7 +12,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
-import { readProjectFile } from './project.js';
+import { readProjectFile, readProjectBytes } from './project.js';
+import { decodeDmi } from './dmi.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PROFILES = Object.freeze(['default', 'civ13']);
@@ -103,4 +104,39 @@ export async function recordIngame({ root, dme, map, binDir, profile = 'default'
     return { status: 'ok', dump, compiler, runtime, dir: keepDir ? dir : undefined, seconds: (Date.now() - started) / 1000,
       runtimeErrors: (runtime.match(/runtime error:/g) || []).length };
   } finally { if (!keepDir) await rm(dir, { recursive: true, force: true }); }
+}
+
+/**
+ * Check the shape of an appearance dump (from recordIngame, or a live game such as Civ13's
+ * character_view) before rendering it. Throws a TypeError naming the problem.
+ */
+export function validateDump(dump, { maxTiles = 64 * 64 } = {}) {
+  if (!dump || typeof dump !== 'object' || Array.isArray(dump)) throw new TypeError('dump must be an object');
+  const r = dump.region;
+  if (!Array.isArray(r) || r.length !== 5 || !r.every(v => Number.isSafeInteger(v) && v >= 1)) throw new TypeError('dump.region must be [x1, y1, x2, y2, z] positive integers');
+  if (r[2] < r[0] || r[3] < r[1] || (r[2] - r[0] + 1) * (r[3] - r[1] + 1) > maxTiles) throw new TypeError(`dump.region must be non-empty and at most ${maxTiles} tiles`);
+  if (!Number.isSafeInteger(dump.icon_size) || dump.icon_size < 1 || dump.icon_size > 256) throw new TypeError('dump.icon_size must be an integer from 1 to 256');
+  for (const key of ['appearances', 'icons', 'cells']) if (!Array.isArray(dump[key])) throw new TypeError(`dump.${key} must be an array`);
+  for (const a of dump.appearances) if (!a || typeof a !== 'object' || !Array.isArray(a.overlays) || !Array.isArray(a.underlays)) throw new TypeError('each dump appearance needs overlays and underlays arrays');
+  for (const c of dump.cells) if (!Array.isArray(c) || c.length < 5 || !Array.isArray(c[4])) throw new TypeError('each dump cell must be [x, y, area, turf, movables, ...]');
+  if (dump.plane_masters !== undefined && !Array.isArray(dump.plane_masters)) throw new TypeError('dump.plane_masters must be an array');
+  return dump;
+}
+
+/**
+ * Decode a dump's icons (by dump icon index - 1): inline base64 bytes first, else the row's
+ * `source` resource read from the project (contained in root). A missing or unreadable icon is
+ * null, which the renderer counts as missing-icon.
+ */
+export async function loadDumpIcons(dump, root = null) {
+  const out = [];
+  for (const row of dump.icons) {
+    let dmi = null;
+    try {
+      if (row?.base64) dmi = decodeDmi(Buffer.from(String(row.base64), 'base64'), { plainPng: true });
+      else if (root && typeof row?.source === 'string' && row.source) dmi = decodeDmi((await readProjectBytes(root, row.source)).data, { plainPng: true });
+    } catch { dmi = null; }
+    out.push(dmi);
+  }
+  return out;
 }

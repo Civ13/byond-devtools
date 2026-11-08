@@ -152,3 +152,23 @@ test('live: ingame_render boots the fixture and returns a scaled, boxed PNG (set
   assert.equal(r.data.image.width, 48); assert.equal(decodePng(r.png).height, 32);
   assert.equal(r.provenance.truthLayer, 'native-initialized-world');
 });
+
+test('dump_render draws a live appearance dump from inline and project icons', async () => {
+  const s = await startServer();
+  try {
+    const bytes = await readFile(path.join(s.dir, 'icons', 'objs.dmi'));
+    const app = (icon, state, extra = {}) => ({ icon, icon_state: state, dir: 2, layer: 3, plane: 0, pixel_x: 0, pixel_y: 0, alpha: 255, color: null, blend_mode: 0, appearance_flags: 0, invisibility: 0, overlays: [], underlays: [], ...extra });
+    const dump = { region: [1, 1, 2, 1, 1], icon_size: 16, see_invisible: 0, plane_masters: [],
+      icons: [{ source: 'icons/objs.dmi' }, { source: null, base64: bytes.toString('base64') }, { source: 'icons/missing.dmi' }],
+      appearances: [app(1, 'box', { overlays: [3] }), app(2, 'half'), app(2, 'half', { pixel_x: 2 }), app(3, 'x'), app(null, '')],
+      cells: [[1, 1, 5, 1, [[4, 0, 0, '/obj/thing']], '/turf/a'], [2, 1, 5, 2, [], '/turf/b']] };
+    const r = await s.call('dump_render', { dump, scale: 2, boxes: [{ x: 2, y: 1 }] });
+    assert.equal(r.isError, false, JSON.stringify(r.json));
+    assert.equal(r.json.data.drawn, 3); // box, its overlay and the inline half; the missing icon is reported
+    assert.ok(r.json.data.diagnostics.some(d => d.code === 'missing-icon' && d.detail === 'icons/missing.dmi'));
+    assert.deepEqual([r.json.data.image.width, r.json.data.image.height], [64, 32]);
+    assert.equal(decodePng(Buffer.from(r.content[1].data, 'base64')).width, 64);
+    assert.match((await s.call('dump_render', { dump: { ...dump, region: [1, 1, 99, 99, 1] } })).json.message, /at most 4096 tiles/);
+    assert.match((await s.call('dump_render', { dump: { ...dump, icons: [{ source: '../../etc/passwd' }] } })).json.data.diagnostics.map(d => d.code).join(), /missing-icon/);
+  } finally { await s.close(); }
+});

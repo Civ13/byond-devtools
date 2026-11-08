@@ -359,7 +359,7 @@ Or in a project's `.mcp.json`:
 - Tools: `map_summary`, `map_cell`, `map_find`, `map_render` (PNG image, at most 64x64 tiles),
   `map_lint`, `type_info`, `map_diff` (optionally rendered), `map_edit`, `prefab_extract`,
   `prefab_place`, `map_generators`, `map_check`, `project_compile`, `icon_info`, `icon_render`,
-  `image_compare` and `ingame_render`. Inputs are validated against each tool's schema; unknown
+  `image_compare`, `ingame_render` and `dump_render`. Inputs are validated against each tool's schema; unknown
   arguments are refused. Failures come back as tool errors the model can read.
 - Every PNG tool takes `scale` (1-8, nearest neighbour), `background` (`#rrggbb[aa]` or
   `transparent`), `inline` (false leaves the image out of the reply) and `file` (true writes it to
@@ -379,6 +379,10 @@ Or in a project's `.mcp.json`:
 - `ingame_render` is the CLI's `ingame` render over MCP: it compiles and boots the game headless
   in a temp folder (`-safe`, 127.0.0.1, no saves) and composes the initialized world. It runs game
   code, so it is refused unless the server was started with `--allow-game`.
+- `dump_render` draws an appearance dump in the same format without booting anything, such as a
+  live Civ13 character's view (`character_view`). Its icons are inline base64 (runtime icons) or
+  project-relative `source` paths read from `--root`; a missing one is a `missing-icon`
+  diagnostic. The CLI does the same with `ingame --dump FILE.json --out FILE.png`.
 - Read-only by default. `map_edit` with `apply: true` needs `--allow-write`, and then still
   requires the patch's base sha256 and expected stacks, verifies the result, and refuses the
   write if an optional `contract` fails. Read-only tools are annotated `readOnlyHint`.
