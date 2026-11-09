@@ -66,13 +66,20 @@ export function run(cmd, args, { cwd, env, timeoutMs, onTick }) {
  * Compile and boot. Returns {status, dump?, dir?, compiler, runtime, seconds}. status is 'ok',
  * 'compile-failed', 'run-failed' or 'probe-failed'. `keepDir` keeps the run folder (with the
  * exported icons the dump refers to); otherwise the dump is returned with icon bytes inlined.
+ * `dataPaths` are project-relative files or folders copied into the run folder besides config/.
  */
 export async function recordIngame({ root, dme, map, binDir, profile = 'default', region, timeOfDay, settleDs = 50,
-  timeoutMs = 3600000, keepDir = false, onPhase }) {
+  timeoutMs = 3600000, keepDir = false, dataPaths = [], onPhase }) {
   if (!binDir) throw new Error('binDir (BYOND bin directory) is required');
   const { x1, y1, x2, y2, z } = region;
   for (const v of [x1, y1, x2, y2, z]) if (!Number.isSafeInteger(v) || v < 1) throw new TypeError('Region coordinates must be positive integers');
   if (x2 < x1 || y2 < y1 || (x2 - x1 + 1) * (y2 - y1 + 1) > 128 * 128) throw new RangeError('Region must be non-empty and at most 128x128 tiles');
+  const base = path.dirname(path.resolve(root, dme));
+  const data = dataPaths.map(rel => {
+    const relative = path.relative(base, path.resolve(base, rel));
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new RangeError(`Data path ${rel} must be inside the project`);
+    return relative;
+  });
   const started = Date.now();
   const src = await probeSource({ root, dme, map, profile });
   const dir = await mkdtemp(path.join(os.tmpdir(), 'byond-ingame-'));
@@ -87,6 +94,8 @@ export async function recordIngame({ root, dme, map, binDir, profile = 'default'
     // The game reads its config from the run folder; copy the checkout's config/ only.
     const config = path.join(path.dirname(path.resolve(root, dme)), 'config');
     if (await stat(config).then(s => s.isDirectory(), () => false)) await cp(config, path.join(dir, 'config'), { recursive: true });
+    // Extra files or folders the game reads at run time (for example Civ13's maps/heights), at the same relative path.
+    for (const relative of data) await cp(path.join(base, relative), path.join(dir, relative), { recursive: true });
     const params = new URLSearchParams({ x1, y1, x2, y2, z, settle_ds: settleDs, ...(timeOfDay ? { time_of_day: timeOfDay } : {}) });
     onPhase?.('boot');
     let last = '';

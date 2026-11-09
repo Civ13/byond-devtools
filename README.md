@@ -186,13 +186,16 @@ node src/cli.js ingame --root . --dump gaia.json --out again.png --force   # re-
   round like an admin's start-now, waits for lighting creation and its update queue, builds
   the HUD's plane masters, turns webhooks and Tor checks off). `--map` swaps another map
   into the `.dme`'s `BEGIN/END_SELECTED_MAP` block.
+- The game runs in a temp folder with a copy of `config/` only. Files it reads at run
+  time go in with `--data PATH[,PATH...]` (project-relative, for example
+  `--data maps/heights` for Civ13's hills).
 - The image is composed by byond-devtools from the recorded appearances, not taken from a
   client: planes in order, plane masters (colour matrix over the whole plane surface,
   then their blend mode), layers, south over north, underlays/self/overlays with
   inherited dir, colour, alpha, offsets and transform, blend modes, and `see_invisible`
   of a living player.
 - Not modelled, counted in the report: filters (including the client's ambient-occlusion
-  shadow), maptext, `vis_contents`, animation past frame 1, `KEEP_TOGETHER` groups,
+  shadow), maptext, `vis_contents` on movables (turf `vis_contents` are drawn), animation past frame 1, `KEEP_TOGETHER` groups,
   `client.color` and screen objects on secondary maps.
 - A dump may carry `screen` (`[appearance, screen_loc]` pairs from `client.screen`) with `view`
   (client.view) and `center`: screen objects are placed by `screen_loc` (numbers, WEST/EAST/NORTH/

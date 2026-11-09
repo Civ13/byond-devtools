@@ -10,11 +10,13 @@
  * movables whose whole appearance tree put no pixel on the map (an atom a player can interact
  * with but cannot see).
  *
- * Not modelled (counted in diagnostics): filters, maptext, vis_contents, animation past
+ * Turf vis_contents are drawn with their turf (VIS_INHERIT_PLANE/LAYER honoured).
+ * Not modelled (counted in diagnostics): filters, maptext, movable vis_contents, animation past
  * frame 1, KEEP_TOGETHER groups, secondary-map screen objects and client.color.
  */
 const FLOAT_LAYER = -1, FLOAT_PLANE = -32767;
 const RESET_COLOR = 2, RESET_ALPHA = 4, RESET_TRANSFORM = 8, KEEP_TOGETHER = 32;
+const VIS_INHERIT_LAYER = 8, VIS_INHERIT_PLANE = 16;
 const BLEND = { 0: 'default', 1: 'overlay', 2: 'add', 3: 'subtract', 4: 'multiply', 5: 'inset' };
 const IDENTITY = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]);
 
@@ -141,17 +143,20 @@ export function renderIngame(dump, icons, { maxPixels = 16 * 1024 * 1024 } = {})
   if (width * height > maxPixels) throw new RangeError('Output pixel limit exceeded');
   const counts = new Map(), bump = (code, detail) => { const k = `${code}\u0000${detail}`; counts.set(k, (counts.get(k) || 0) + 1); };
   if (dump.map_format && dump.map_format !== 0) bump('unsupported-map-format', String(dump.map_format));
-  if (dump.vis_contents) bump('not-modelled', `vis_contents on ${dump.vis_contents} atoms`);
+  if (dump.vis_contents) bump('not-modelled', `vis_contents on ${dump.vis_contents} movables`);
   const apps = dump.appearances, see = dump.see_invisible ?? 0;
   const sprites = [];
   let order = 0;
   // Walk one appearance tree. `key` orders sprites of one atom: underlays, self, overlays.
-  function expand(id, parent, ctx) {
+  function expand(id, parent, ctx, visFlags = null) {
     const a = apps[id - 1];
     if (!a) { bump('missing-appearance', String(id)); return; }
     const flags = a.appearance_flags || 0;
-    const plane = parent && a.plane === FLOAT_PLANE ? parent.plane : a.plane;
-    const layer = parent && a.layer < 0 ? parent.layer : a.layer;
+    // A vis_contents entry keeps its own plane and layer unless its vis_flags inherit them.
+    const plane = visFlags !== null ? (visFlags & VIS_INHERIT_PLANE ? parent.plane : a.plane)
+      : parent && a.plane === FLOAT_PLANE ? parent.plane : a.plane;
+    const layer = visFlags !== null ? (visFlags & VIS_INHERIT_LAYER ? parent.layer : a.layer)
+      : parent && a.layer < 0 ? parent.layer : a.layer;
     const own = colorMatrix(a.color);
     if (own === undefined) bump('approximate-color', JSON.stringify(a.color).slice(0, 80));
     const alphaM = a.alpha !== 255 && a.alpha != null ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, a.alpha / 255, 0, 0, 0, 0] : null;
@@ -171,14 +176,21 @@ export function renderIngame(dump, icons, { maxPixels = 16 * 1024 * 1024 } = {})
     a.underlays.forEach(u => expand(u, node, ctx));
     if (a.icon) sprites.push({ ...node, icon: a.icon, state: a.icon_state, x: ctx.x, y: ctx.y, atom: ctx.atom, seq: order++ });
     a.overlays.forEach(o => expand(o, node, ctx));
+    return node;
   }
   let atomIndex = 0;
   const atoms = []; // per atom index: null, or a movable {x, y, type, clickable} watched for undrawn
-  for (const [x, y, area, turf, movables] of dump.cells) {
+  for (const [x, y, area, turf, movables, , turfVis] of dump.cells) {
     const base = { x, y, px: 0, py: 0 };
     const visible = id => (apps[id - 1]?.invisibility ?? 0) <= see;
     if (visible(area)) { atoms.push(null); expand(area, null, { ...base, atom: atomIndex++ }); }
-    if (visible(turf)) { atoms.push(null); expand(turf, null, { ...base, atom: atomIndex++ }); }
+    if (visible(turf)) {
+      atoms.push(null);
+      const ctx = { ...base, atom: atomIndex++ };
+      const holder = expand(turf, null, ctx);
+      // Turf vis_contents draw with the turf: its offsets, colour and transform.
+      if (holder && Array.isArray(turfVis)) for (const [id, vf] of turfVis) if (visible(id)) expand(id, holder, ctx, vf || 0);
+    }
     for (const [id, sx, sy, type] of movables) if (visible(id)) {
       atoms.push({ x, y, type: type ?? null, clickable: (apps[id - 1]?.mouse_opacity ?? 1) !== 0 });
       expand(id, null, { ...base, px: sx || 0, py: sy || 0, atom: atomIndex++ });

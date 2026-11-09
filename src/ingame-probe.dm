@@ -125,9 +125,11 @@ var/global/datum/devtools_ingame_probe/devtools_ingame_probe = new
 				movables += list(list(app_index(A, ref(A.appearance)), A.step_x, A.step_y, "[A.type]"))
 				if(length(A.vis_contents))
 					vis++
-			if(length(T.vis_contents))
-				vis++
-			cells += list(list(x, y, app_index(T.loc, ref(T.loc.appearance)), app_index(T, ref(T.appearance)), movables, "[T.type]"))
+			// Turf vis_contents: [appearance, vis_flags] per entry, drawn with the turf.
+			var/list/turf_vis = list()
+			for(var/atom/movable/V in T.vis_contents)
+				turf_vis += list(list(app_index(V, ref(V.appearance)), V.vis_flags))
+			cells += list(list(x, y, app_index(T.loc, ref(T.loc.appearance)), app_index(T, ref(T.appearance)), movables, "[T.type]", turf_vis))
 	// Plane masters exactly as a player's HUD makes them (no client: no per-client filters).
 	var/list/masters = list()
 	plane_masters(masters)

@@ -29,13 +29,14 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           [--grid N] [--areas] [--show-invisible] [--icon-size N] [--force]
           static preview from authored source + type defaults (not a client screenshot); at most 128x128 tiles
   ingame: --dme FILE --byond BIN --out FILE.png --x1 N --y1 N --x2 N --y2 N --z N [--profile default|civ13]
-          [--map FILE] [--time-of-day NAME] [--save-dump FILE.json] [--force]   or: --dump FILE.json[,FILE2.json...] --out FILE.png [--interval-ms N]
+          [--map FILE] [--time-of-day NAME] [--data PATH[,PATH...]] [--save-dump FILE.json] [--force]   or: --dump FILE.json[,FILE2.json...] --out FILE.png [--interval-ms N]
           (a dump's icons are inline base64 or project-relative source paths read from --root, so a
           live game's dump, such as Civ13's character_view, renders the same way; several dumps make an
           animated PNG, one frame each; screen objects in a dump are drawn; undrawn lists clickable atoms
           that put no pixel on the map)
           boots the game headless in a temp folder (RUNS GAME CODE: -safe, 127.0.0.1, no saves) and renders the
-          initialized world: runtime icons, overlays, colour matrices, planes and lighting
+          initialized world: runtime icons, overlays, colour matrices, planes and lighting; only config/ and
+          --data paths (project-relative) are copied into that folder for the game to read
   edit: --map FILE --patch FILE.json [--apply] [--inverse-out FILE.json] [--contract FILE.json [--dme FILE (--byond BIN | --tree FILE)]]
           dry run by default; --apply replaces the map atomically after checking base sha256 and expected stacks
   resize: --map FILE [--max-x N] [--max-y N] [--max-z N] [--offset-x N] [--offset-y N] [--fill "/turf/x,/area/y"] [--base SHA256] [--apply]
@@ -62,7 +63,7 @@ const usage = `Usage: node src/cli.js <summary|cell|find|project|types|lint|icon
           Stops after --minutes (default 30) or Ctrl+C; reports runtime errors with source lines and the proc profile
 Apart from ingame and playtest, nothing runs DM code or touches a server. Only render/diff/prefab/generators --out, edit --apply, resize --apply and edit --inverse-out write files.`;
 function options(args) {
-  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold','interval-ms','max-x','max-y','max-z','offset-x','offset-y','fill','base']);
+  const opts = Object.create(null), allowed = new Set(['root','map','dme','x','y','z','type','subtypes','limit','offset','byond','tree','dmi','out','x1','y1','x2','y2','grid','areas','show-invisible','icon-size','force','patch','apply','inverse-out','profile','time-of-day','save-dump','dump','before','git-ref','pad','layers','prefab','mode','roots','contract','port','minutes','profile-procs','follow','after','threshold','interval-ms','max-x','max-y','max-z','offset-x','offset-y','fill','base','data']);
   for (let i=0;i<args.length;i++) {
     const flag=args[i]; if (!flag.startsWith('--') || !allowed.has(flag.slice(2))) throw new Error(`Unknown option ${flag}`);
     const key=flag.slice(2); if (key in opts) throw new Error(`Duplicate option --${key}`);
@@ -138,7 +139,7 @@ try {
       if(!dme) throw new Error('--dme is required'); if(!opts.byond) throw new Error('--byond is required');
       const profile=opts.profile??'default'; if(!PROFILES.includes(profile)) throw new Error(`--profile must be one of ${PROFILES.join(', ')}`);
       const region={}; for(const k of ['x1','y1','x2','y2','z']) region[k]=integer(opts[k],k);
-      run=await recordIngame({root:opts.root,dme:opts.dme,map:opts.map,binDir:opts.byond,profile,region,timeOfDay:opts['time-of-day'],onPhase:p=>console.error(JSON.stringify({phase:p}))});
+      run=await recordIngame({root:opts.root,dme:opts.dme,map:opts.map,binDir:opts.byond,profile,region,timeOfDay:opts['time-of-day'],dataPaths:opts.data?String(opts.data).split(',').filter(Boolean):[],onPhase:p=>console.error(JSON.stringify({phase:p}))});
       if(run.status!=='ok') { const e=new Error(`in-game run ${run.status}: ${run.failure??''}`); e.details=run; console.error(JSON.stringify({compiler:run.compiler,runtime:run.runtime?.slice(-4000)})); throw e; }
       dump=run.dump;
       if(opts['save-dump']) await writeFile(opts['save-dump'],JSON.stringify(dump)+'\n',{flag:'wx'});
@@ -157,7 +158,7 @@ try {
     } else await writeFile(opts.out,encodePng(r,{text:{Comment:comment}}),{flag:opts.force?'w':'wx'});
     result={schemaVersion:1,provenance:{...dump.provenance,byond:dump.byond,region:dump.region,timeOfDay:dump.time_of_day,seconds:run?.seconds??null,runtimeErrors:run?.runtimeErrors??null},
       data:{out:opts.out,width:r.width,height:r.height,drawn:r.drawn,diagnostics:r.diagnostics,undrawn:r.undrawn,undrawnCount:r.undrawnCount,animation,
-        notModelled:['filters (incl. client ambient occlusion)','maptext','vis_contents','animation past frame 1','KEEP_TOGETHER groups','client.color and secondary-map screen objects']}};
+        notModelled:['filters (incl. client ambient occlusion)','maptext','vis_contents on movables','animation past frame 1','KEEP_TOGETHER groups','client.color and secondary-map screen objects']}};
   }
   else if(command==='edit') {
     if(!opts.map) throw new Error('--map is required'); if(!opts.patch) throw new Error('--patch is required');

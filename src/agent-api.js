@@ -287,7 +287,7 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       const { png, image } = await finish(r, a, { comment: `byond-devtools in-game render; ${r.truthLayer}; composed by byond-devtools, not a client screenshot`, region: a, iconSize: run.dump.icon_size });
       return { provenance: { ...run.dump.provenance, byond: run.dump.byond, region: run.dump.region, timeOfDay: run.dump.time_of_day, seconds: run.seconds, runtimeErrors: run.runtimeErrors },
         data: { width: r.width, height: r.height, drawn: r.drawn, diagnostics: r.diagnostics, image,
-          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and screen objects'] }, png };
+          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents on movables', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and screen objects'] }, png };
     },
     async dump_render(a) {
       if (!a.dump === !a.dumps?.length) throw new ToolInputError('Give exactly one of dump or dumps');
@@ -308,7 +308,7 @@ export function createAgentApi({ root, dme, byond, tree, allowWrite = false, all
       return { provenance: { ...(dump.provenance || {}), byond: dump.byond ?? null, region: dump.region, timeOfDay: dump.time_of_day ?? null, truthLayer: dump.provenance?.truthLayer ?? 'live-appearance-dump' },
         data: { width: r.width, height: r.height, drawn: r.drawn, diagnostics: r.diagnostics, undrawn: r.undrawn, undrawnCount: r.undrawnCount, image: out.image,
           frames: renders.length > 1 ? renders.map(f => ({ drawn: f.drawn, undrawnCount: f.undrawnCount })) : undefined,
-          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and secondary-map screen objects'] }, png: out.png };
+          notModelled: ['filters (incl. client ambient occlusion)', 'maptext', 'vis_contents on movables', 'animation past frame 1', 'KEEP_TOGETHER groups', 'client.color and secondary-map screen objects'] }, png: out.png };
     },
     async map_lint({ map }) {
       const r = await renderer(), { input, parsed } = await readMap(map);
