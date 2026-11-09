@@ -58,6 +58,10 @@ test('probe source makes includes absolute, sets FILE_DIR, swaps the map and app
   await assert.rejects(probeSource({ root: ROOT, dme: 'ingame.dme', profile: 'nope' }), /Unknown profile/);
   assert.deepEqual(PROFILES, ['default', 'civ13']);
 });
+test('data paths must stay inside the project', async () => {
+  await assert.rejects(recordIngame({ root: ROOT, dme: 'ingame.dme', binDir: '/nonexistent', dataPaths: ['../outside'],
+    region: { x1: 1, y1: 1, x2: 1, y2: 1, z: 1 } }), /inside the project/);
+});
 const bin = process.env.BYOND_BIN;
 test('live: re-recording the fixture in DreamDaemon gives the checked-in dump (set BYOND_BIN to run)', { skip: bin ? false : 'BYOND_BIN not set' }, async () => {
   const run = await recordIngame({ root: ROOT, dme: 'ingame.dme', binDir: bin, region: { x1: 1, y1: 1, x2: 3, y2: 2, z: 1 }, settleDs: 5, timeoutMs: 120000 });
@@ -91,4 +95,18 @@ test('screen objects are placed by screen_loc and clickable atoms that draw noth
   const checked = renderIngame(d, icons);
   assert.deepEqual(checked.undrawn, [{ x: d.cells[0][0], y: d.cells[0][1], type: '/obj/unseen' }]);
   assert.equal(r.undrawnCount, 0, JSON.stringify(r.undrawn));
+});
+test('turf vis_contents draw with the turf and keep their own layer unless inherited', () => {
+  const withVis = JSON.parse(JSON.stringify(dump));
+  const cells = Object.fromEntries(withVis.cells.map(c => [`${c[0]},${c[1]}`, c]));
+  const box = cells['1,2'][4][0][0];
+  // Show the EAST box at (3,1) through the turf's vis_contents, inheriting the turf plane.
+  cells['3,1'][6] = [[box, 16]];
+  const v = renderIngame(withVis, icons);
+  const at = (x, y) => [...v.rgba.subarray((y * v.width + x) * 4, (y * v.width + x) * 4 + 4)];
+  assert.deepEqual(px(17, 15), [50, 50, 50, 255]); // plain floor without it
+  assert.notDeepEqual(at(17, 15), [50, 50, 50, 255]);
+  assert.ok(!v.diagnostics.some(d => /vis_contents/.test(JSON.stringify(d))));
+  // An old dump without the column still renders.
+  assert.equal(renderIngame(dump, icons).drawn, r.drawn);
 });
